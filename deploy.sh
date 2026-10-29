@@ -51,7 +51,7 @@ LE_SCRIPT="/usr/local/sbin/${APP_SLUG}-letsencrypt.sh"
 BACKUP_SCRIPT="/usr/local/sbin/${APP_SLUG}-backup.sh"
 RESTORE_CHECK_SCRIPT="/usr/local/sbin/${APP_SLUG}-restore-check.sh"
 CRON_FILE="/etc/cron.d/${APP_SLUG}"
-CERT_DIR="/etc/letsencrypt/live/${DOMAIN}"
+: "${CERT_DIR:=/etc/letsencrypt/live/${DOMAIN}}"   # override to reuse an existing (e.g. wildcard) certificate
 PRESERVE_LOCAL=()
 
 export GIT_ASKPASS="$ASKPASS"
@@ -498,21 +498,52 @@ write_letsencrypt_script() {
 #!/usr/bin/env bash
 # Managed by ${APP_SLUG} deploy.sh — obtain/renew the TLS certificate for ${DOMAIN} via webroot.
 # Non-invasive: uses 'certonly --webroot' so certbot never edits Apache configs.
-set -euo pipefail
+set -uo pipefail
 DOMAIN="${DOMAIN}"
 EMAIL="${LE_EMAIL}"
 WEBROOT="${ACME_ROOT}"
+CHALLENGE_DIR="\$WEBROOT/.well-known/acme-challenge"
 [ "\$(id -u)" -eq 0 ] || { echo "Run as root"; exit 1; }
+
+echo "[INFO] Checking DNS for \$DOMAIN"
 PUBLIC_IP="\$(curl -fsS4 --max-time 5 https://api.ipify.org || true)"
-DNS_IP="\$(getent ahostsv4 "\$DOMAIN" | awk 'NR==1{print \$1}')"
-if [ -n "\$PUBLIC_IP" ] && [ -n "\$DNS_IP" ] && [ "\$PUBLIC_IP" != "\$DNS_IP" ]; then
-  echo "[WARN] \$DOMAIN resolves to \$DNS_IP but this server's public IP looks like \$PUBLIC_IP. Validation may fail."
+DNS_IPS="\$(getent ahostsv4 "\$DOMAIN" | awk '{print \$1}' | sort -u | tr '\n' ' ')"
+if [ -z "\$DNS_IPS" ]; then
+  echo "[ERROR] \$DOMAIN does not resolve. Create an A record pointing to \${PUBLIC_IP:-this server}."; exit 1
 fi
+if [ -n "\$PUBLIC_IP" ] && ! echo " \$DNS_IPS" | grep -q " \$PUBLIC_IP "; then
+  echo "[WARN] \$DOMAIN resolves to \$DNS_IPS but this server's public IP is \$PUBLIC_IP."
+  echo "       If the record is proxied (e.g. Cloudflare orange cloud), set it to DNS-only until the certificate is issued."
+fi
+
+echo "[INFO] Self-testing the ACME challenge path through Apache"
+mkdir -p "\$CHALLENGE_DIR"; chmod 755 "\$WEBROOT" "\$WEBROOT/.well-known" "\$CHALLENGE_DIR"
+TOKEN="selftest-\$(openssl rand -hex 8)"
+echo "\$TOKEN" > "\$CHALLENGE_DIR/\$TOKEN"; chmod 644 "\$CHALLENGE_DIR/\$TOKEN"
+GOT="\$(curl -s --max-time 10 --resolve "\$DOMAIN:80:127.0.0.1" "http://\$DOMAIN/.well-known/acme-challenge/\$TOKEN" || true)"
+rm -f "\$CHALLENGE_DIR/\$TOKEN"
+if [ "\$GOT" != "\$TOKEN" ]; then
+  echo "[ERROR] Apache did not serve the challenge file for \$DOMAIN on port 80 (got: \$(echo "\$GOT" | head -c 120))."
+  echo "        Virtual hosts that could be answering for \$DOMAIN:"
+  apache2ctl -S 2>/dev/null | grep -E "port 80|\$DOMAIN|\\*\\.|default server" | sed 's/^/          /'
+  echo "        Look for another *:80 vhost with ServerAlias *.${DOMAIN#*.} or an IP-specific <VirtualHost x.x.x.x:80>."
+  exit 1
+fi
+echo "[INFO] Challenge path OK."
+
 certbot certonly --webroot -w "\$WEBROOT" -d "\$DOMAIN" \\
   --email "\$EMAIL" --agree-tos --no-eff-email --non-interactive \\
   --keep-until-expiring --cert-name "\$DOMAIN" \\
   --deploy-hook "apache2ctl configtest && systemctl reload apache2"
+RC=\$?
+if [ \$RC -ne 0 ]; then
+  echo "[ERROR] certbot failed (exit \$RC). Last log lines:"
+  tail -n 25 /var/log/letsencrypt/letsencrypt.log 2>/dev/null | sed 's/^/   /'
+  echo "        Common causes: port 80 blocked by firewall/security group, DNS not pointing here, rate limits."
+  exit \$RC
+fi
 echo "[INFO] Certificate ready: /etc/letsencrypt/live/\$DOMAIN/"
+echo "[INFO] If this was run by hand, re-run deploy.sh to switch the vhost to HTTPS."
 EOF
   chmod 750 "$LE_SCRIPT"
 }
@@ -649,6 +680,11 @@ summary() {
   echo "   Env file:     ${ENV_FILE}   (back up offsite with ${ETC_DIR}/backup.key)"
   echo "   Private data: ${DATA_DIR}/private"
   echo "   TLS script:   ${LE_SCRIPT}"
+  if [ ! -f "$CERT_DIR/fullchain.pem" ]; then
+    echo
+    echo " ACTION REQUIRED — NO TLS CERTIFICATE: the site is NOT serving the app yet."
+    echo "   Diagnose/issue with: sudo ${LE_SCRIPT}   then re-run this script."
+  fi
   echo "   Backups:      ${BACKUP_SCRIPT}  (daily 02:30)  ·  drill: ${RESTORE_CHECK_SCRIPT}"
   echo "   Cron:         ${CRON_FILE}"
   if [ "${#missing[@]}" -gt 0 ]; then
