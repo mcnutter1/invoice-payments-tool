@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { @apply text-slate-800 bg-slate-50 antialiased; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+  h1 { @apply text-2xl font-semibold tracking-tight text-slate-900; }
+  h2 { @apply text-lg font-semibold text-slate-900; }
+  h3 { @apply text-base font-semibold text-slate-900; }
+  a { @apply text-brand-700 hover:text-brand-800; }
+  :focus-visible { @apply outline outline-2 outline-offset-2 outline-brand-600; }
+  table { @apply w-full text-sm; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+}
+
+@layer components {
+  .btn { @apply inline-flex items-center justify-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 no-underline whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed; }
+  .btn-primary { @apply border-brand-700 bg-brand-700 text-white hover:bg-brand-800 hover:text-white; }
+  .btn-danger { @apply border-red-700 bg-white text-red-700 hover:bg-red-50; }
+  .btn-ghost { @apply border-transparent bg-transparent shadow-none hover:bg-slate-100; }
+  .btn-sm { @apply px-2 py-1 text-xs; }
+  .card { @apply rounded-lg border border-slate-200 bg-white shadow-sm; }
+  .card-body { @apply p-4 sm:p-5; }
+  .card-head { @apply flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 sm:px-5; }
+  .label { @apply mb-1 block text-sm font-medium text-slate-700; }
+  .hint { @apply mt-1 text-xs text-slate-500; }
+  .input { @apply block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-600/30; }
+  .input-sm { @apply px-2 py-1; }
+  .check { @apply h-4 w-4 rounded border-slate-300 text-brand-700; }
+  .field-error { @apply mt-1 text-xs font-medium text-red-700; }
+  .tbl { @apply w-full text-sm; }
+  .tbl th { @apply border-b border-slate-200 bg-slate-50 px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500; }
+  .tbl th.num { @apply text-right; }
+  .tbl td { @apply border-b border-slate-100 px-3 py-2 align-top; }
+  .tbl tr:hover td { @apply bg-slate-50/60; }
+  .num { @apply text-right tabular-nums whitespace-nowrap; }
+  .chip { @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset whitespace-nowrap; }
+  .chip-gray { @apply bg-slate-50 text-slate-700 ring-slate-300; }
+  .chip-green { @apply bg-emerald-50 text-emerald-800 ring-emerald-300; }
+  .chip-amber { @apply bg-amber-50 text-amber-800 ring-amber-300; }
+  .chip-red { @apply bg-red-50 text-red-800 ring-red-300; }
+  .chip-blue { @apply bg-sky-50 text-sky-800 ring-sky-300; }
+  .chip-violet { @apply bg-violet-50 text-violet-800 ring-violet-300; }
+  .nav-link { @apply flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-slate-600 no-underline hover:bg-slate-100 hover:text-slate-900; }
+  .nav-link.active { @apply bg-brand-50 text-brand-800; }
+  .menu { @apply absolute z-30 mt-2 min-w-[14rem] rounded-md border border-slate-200 bg-white p-1 shadow-lg; }
+  .menu a, .menu button { @apply block w-full rounded px-3 py-2 text-left text-sm text-slate-700 no-underline hover:bg-slate-100; }
+  .metric { @apply block rounded-lg border border-slate-200 bg-white p-4 no-underline shadow-sm hover:border-brand-300; }
+  .metric-label { @apply text-xs font-medium uppercase tracking-wide text-slate-500; }
+  .metric-value { @apply mt-1 text-2xl font-semibold tabular-nums text-slate-900; }
+  .metric-note { @apply mt-1 text-xs text-slate-500; }
+  .alert { @apply rounded-md border px-4 py-3 text-sm; }
+  .alert-ok { @apply border-emerald-200 bg-emerald-50 text-emerald-900; }
+  .alert-err { @apply border-red-200 bg-red-50 text-red-900; }
+  .alert-warn { @apply border-amber-200 bg-amber-50 text-amber-900; }
+  .alert-info { @apply border-sky-200 bg-sky-50 text-sky-900; }
+  .dl { @apply grid grid-cols-3 gap-x-3 gap-y-2 text-sm; }
+  .dl dt { @apply col-span-1 text-slate-500; }
+  .dl dd { @apply col-span-2 text-slate-900; }
+  .empty { @apply rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500; }
+  .prose-doc h1 { @apply mb-3 mt-4 text-xl font-semibold; }
+  .prose-doc h2 { @apply mb-2 mt-4 text-base font-semibold; }
+  .prose-doc h3 { @apply mb-2 mt-3 text-sm font-semibold; }
+  .prose-doc p { @apply mb-3 leading-relaxed; }
+  .prose-doc ul { @apply mb-3 list-disc pl-6; }
+  .sr-only-focusable:not(:focus) { @apply sr-only; }
+}

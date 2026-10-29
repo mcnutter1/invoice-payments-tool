@@ -1,0 +1,55 @@
+openapi: 3.0.3
+info:
+  title: McNutt Finance JSON interfaces
+  version: 1.0.0
+  description: |
+    The application is server-rendered. Only these endpoints return JSON. All state changes use
+    CSRF-protected HTML form posts (see docs/ROUTES.md).
+paths:
+  /health:
+    get:
+      summary: Liveness/readiness (no secrets, no tenant data)
+      responses:
+        '200':
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [ok, degraded] }
+                  checks:
+                    type: object
+                    properties:
+                      database: { type: string, enum: [ok, failed] }
+                      cron: { type: string, enum: [ok, stale] }
+                      storage: { type: string, enum: [ok, failed] }
+        '503':
+          description: Degraded (same schema)
+  /b/{business}/invoices/{id}:
+    post:
+      summary: Save a draft invoice (autosave variant)
+      description: |
+        With header `X-Autosave: 1` the response is JSON instead of a redirect. Requires an authenticated
+        session cookie, CSRF token (`_token` form field) and `invoices.manage`. Optimistic locking via `lock_version`.
+      parameters:
+        - { name: business, in: path, required: true, schema: { type: string } }
+        - { name: id, in: path, required: true, schema: { type: integer } }
+        - { name: X-Autosave, in: header, required: true, schema: { type: string, enum: ['1'] } }
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema: { type: object, description: Same fields as the invoice editor form }
+      responses:
+        '200':
+          description: Saved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  lock_version: { type: integer }
+                  total: { type: string, example: '$1,234.56' }
+        '422':
+          description: Validation or business-rule error (`{"error": "..."}`), e.g. stale lock_version

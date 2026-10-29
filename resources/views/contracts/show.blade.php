@@ -1,0 +1,122 @@
+@extends('layouts.app')
+@section('title', $contract->number)
+@section('content')
+<div class="flex flex-wrap items-start justify-between gap-3">
+    <div>
+        <h1>{{ $contract->number }} · {{ $contract->title }} @include('partials.status', ['s' => $contract->status])</h1>
+        <p class="text-sm text-slate-500"><a href="{{ $bu }}/clients/{{ $contract->client_id }}">{{ $contract->client->display_name }}</a>
+            @if ($contract->effective_date) · Effective {{ $contract->effective_date->format('M j, Y') }} @endif
+            @if ($contract->term_end_date) · Ends {{ $contract->term_end_date->format('M j, Y') }} @endif
+            @if ($contract->terminated_at) · <span class="text-red-700">Terminated {{ $contract->terminated_at->format('M j, Y') }}</span> @endif
+            @if ($contract->externally_signed) · <span class="chip chip-gray">Externally signed — no in-app signature trail</span> @endif</p>
+    </div>
+    <div class="flex flex-wrap gap-2">
+        @if ($myCountersign)<a class="btn btn-primary" href="{{ $bu }}/contracts/{{ $contract->id }}/countersign">Countersign now</a>@endif
+        @if ($current && in_array($current->status, ['draft']) && $ctx->can('contracts.manage'))
+            <a class="btn" href="{{ $bu }}/contracts/{{ $contract->id }}/edit">Edit draft</a>
+            <a class="btn" href="{{ $bu }}/contracts/{{ $contract->id }}/versions/{{ $current->version }}/document" target="_blank" rel="noopener">Preview PDF</a>
+            <form method="post" action="{{ $bu }}/contracts/{{ $contract->id }}/prepare" data-confirm="Lock this version? After this it can only be sent or voided.">@csrf<button class="btn btn-primary" @disabled(count($missing))>Lock &amp; prepare</button></form>
+        @endif
+        @if ($current && $current->status === 'prepared' && $ctx->can('contracts.send'))
+            <a class="btn" href="{{ $bu }}/contracts/{{ $contract->id }}/versions/{{ $current->version }}/document" target="_blank" rel="noopener">Review PDF</a>
+            <form method="post" action="{{ $bu }}/contracts/{{ $contract->id }}/send" data-confirm="Send for signature to all eligible signers?">@csrf<button class="btn btn-primary">Send for signature</button></form>
+        @endif
+        @if ($current && $current->status === 'completed' && $ctx->can('contracts.manage'))
+            <form method="post" action="{{ $bu }}/contracts/{{ $contract->id }}/amend" data-confirm="Start an amendment? The signed agreement stays unchanged.">@csrf<button class="btn">Amend</button></form>
+        @endif
+        @if ($current && in_array($current->status, ['voided', 'declined', 'expired']) && $ctx->can('contracts.manage'))
+            <form method="post" action="{{ $bu }}/contracts/{{ $contract->id }}/new-version">@csrf<button class="btn btn-primary">Create new version</button></form>
+        @endif
+        @if ($ctx->can('invoices.manage') && $contract->isExecuted())<a class="btn" href="{{ $bu }}/invoices/new?client={{ $contract->client_id }}">New invoice</a>@endif
+    </div>
+</div>
+@if ($missing)<div class="alert alert-warn mt-4">Fill in missing merge fields before locking: {{ implode(', ', $missing) }}</div>@endif
+
+<div class="mt-6 grid gap-4 xl:grid-cols-3">
+    <div class="space-y-4 xl:col-span-2">
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div class="metric"><div class="metric-label">Committed</div><div class="metric-value text-lg">@money($contract->committed_value_cents)</div></div>
+            <div class="metric"><div class="metric-label">Invoiced</div><div class="metric-value text-lg">@money($invoiced)</div><div class="metric-note">Issued, non-void</div></div>
+            <div class="metric"><div class="metric-label">Collected</div><div class="metric-value text-lg">@money($collected)</div><div class="metric-note">Confirmed payments</div></div>
+            <div class="metric"><div class="metric-label">Unbilled</div><div class="metric-value text-lg">@money(max(0, $contract->committed_value_cents - $invoiced))</div><div class="metric-note">Not revenue</div></div>
+        </div>
+        @if ($current && ! $current->source_document_id)
+        <div class="card"><div class="card-head"><h2>Version {{ $current->version }} @if($current->amends_version_id)<span class="chip chip-violet">Amendment</span>@endif</h2>@include('partials.status', ['s' => $current->status])</div>
+            <div class="card-body prose-doc max-h-[32rem] overflow-auto text-sm">{!! $preview !!}</div></div>
+        @endif
+        @if ($contract->milestones->isNotEmpty())
+        <div class="card overflow-x-auto"><div class="card-head"><h2>Milestones</h2></div>
+            <table class="tbl"><thead><tr><th>Milestone</th><th>Due</th><th class="num">Amount</th><th>Status</th><th></th></tr></thead><tbody>
+            @foreach ($contract->milestones as $m)
+                <tr><td>{{ $m->name }}</td><td>{{ $m->due_date?->format('M j, Y') }}</td><td class="num">@money($m->amount_cents)</td><td>@include('partials.status', ['s' => $m->status])</td>
+                    <td class="text-right">@if ($m->invoice_id)<a href="{{ $bu }}/invoices/{{ $m->invoice_id }}">Invoice</a>@elseif ($ctx->can('invoices.manage') && $contract->isActiveForBilling())
+                        <form method="post" action="{{ $bu }}/contracts/{{ $contract->id }}/milestones/{{ $m->id }}/invoice">@csrf<button class="btn btn-sm">Create invoice</button></form>@endif</td></tr>
+            @endforeach
+            </tbody></table></div>
+        @endif
+        @if ($contract->invoices->isNotEmpty() || $contract->schedules->isNotEmpty())
+        <div class="card card-body text-sm">
+            <h2>Billing</h2>
+            @foreach ($contract->invoices as $i)<div><a href="{{ $bu }}/invoices/{{ $i->id }}">{{ $i->displayNumber() }}</a> · @money($i->total_cents) · {{ $i->statusLabel() }}</div>@endforeach
+            @foreach ($contract->schedules as $s)<div>Recurring: <a href="{{ $bu }}/recurring/{{ $s->id }}">{{ $s->name }}</a> · next {{ $s->next_run_date?->format('M j, Y') ?? '—' }} · {{ $s->status }}</div>@endforeach
+        </div>
+        @endif
+        <div class="card overflow-x-auto"><div class="card-head"><h2>Signature activity</h2></div>
+            <table class="tbl"><thead><tr><th>#</th><th>When (UTC)</th><th>Event</th><th>Details</th></tr></thead><tbody>
+            @forelse ($events as $e)
+                <tr><td>{{ $e->seq }}</td><td class="whitespace-nowrap">{{ $e->created_at->utc()->format('Y-m-d H:i:s') }}</td><td>{{ str_replace('_', ' ', $e->event) }}</td>
+                    <td class="text-xs">{{ collect($e->details ?? [])->except(['signature_hash'])->map(fn ($v, $k) => $k.': '.(is_scalar($v) ? $v : json_encode($v)))->implode(' · ') }} @if($e->ip) · IP {{ $e->ip }}@endif</td></tr>
+            @empty <tr><td colspan="4" class="text-slate-500">No activity yet.</td></tr> @endforelse
+            </tbody></table></div>
+    </div>
+    <aside class="space-y-4">
+        @if ($current)
+        <div class="card"><div class="card-head"><h2>Recipients</h2></div><ul class="card-body space-y-2 text-sm">
+            @foreach ($current->recipients as $r)
+                <li class="flex items-start justify-between gap-2"><span><span class="font-medium">{{ $r->name }}</span> <span class="text-slate-500">{{ $r->email }}</span><br><span class="text-xs">{{ ['client_signer' => 'Client signer', 'countersigner' => 'Countersigner', 'cc' => 'Copy'][$r->role] }}{{ $contract->signing_order === 'sequential' && $r->role !== 'cc' ? ' · order '.$r->sign_order : '' }}</span>
+                    @if ($r->signed_at)<br><span class="text-xs text-emerald-700">Signed {{ $r->signed_at->timezone($biz->timezone)->format('M j, g:ia') }} ({{ $r->signature_kind }})</span>@endif
+                    @if ($r->declined_at)<br><span class="text-xs text-red-700">Declined: {{ $r->decline_reason }}</span>@endif</span>
+                    <span class="text-right">@include('partials.status', ['s' => $r->status])
+                        @if ($r->role === 'client_signer' && $r->status === 'sent' && in_array($current->status, ['sent', 'partially_signed']) && $ctx->can('contracts.send'))
+                            <form method="post" action="{{ $bu }}/contract-recipients/{{ $r->id }}/remind" class="mt-1">@csrf<button class="btn btn-sm">Remind</button></form>@endif</span></li>
+            @endforeach
+        </ul></div>
+        <div class="card"><div class="card-head"><h2>Documents</h2></div><ul class="card-body space-y-1 text-sm">
+            @foreach ($contract->versions as $v)
+                <li>v{{ $v->version }} @include('partials.status', ['s' => $v->status])
+                    @if ($v->rendered_document_id) · <a href="{{ $bu }}/contracts/{{ $contract->id }}/versions/{{ $v->version }}/document" target="_blank" rel="noopener">Document</a>@endif
+                    @if ($v->signed_document_id && $v->signed_document_id !== $v->rendered_document_id) · <a href="{{ $bu }}/contracts/{{ $contract->id }}/versions/{{ $v->version }}/signed" target="_blank" rel="noopener">Signed</a>@endif
+                    @if ($v->certificate_document_id) · <a href="{{ $bu }}/contracts/{{ $contract->id }}/versions/{{ $v->version }}/certificate" target="_blank" rel="noopener">Certificate</a>@endif
+                    @if ($v->sha256)<div class="font-mono text-[10px] text-slate-500">SHA-256 {{ $v->sha256 }}</div>@endif
+                </li>
+            @endforeach
+        </ul></div>
+        @endif
+        @if ($ctx->can('contracts.send') && $current && in_array($current->status, ['prepared', 'sent', 'partially_signed']))
+            <form method="post" action="{{ $bu }}/contracts/{{ $contract->id }}/void" class="card card-body space-y-2" data-confirm="Void this envelope? Signers can no longer sign it.">@csrf
+                <label class="label" for="void-reason">Void envelope</label><input class="input" id="void-reason" name="reason" required placeholder="Reason">
+                <button class="btn btn-danger btn-sm">Void</button></form>
+        @endif
+        @if ($ctx->can('contracts.manage'))
+            <details class="card"><summary class="card-head cursor-pointer"><h2>Upload externally signed copy</h2></summary>
+                <form method="post" action="{{ $bu }}/contracts/{{ $contract->id }}/external" enctype="multipart/form-data" class="card-body space-y-2">@csrf
+                    <input class="input" type="file" name="file" accept="application/pdf" required aria-label="Signed PDF">
+                    <textarea class="input" name="provenance" rows="2" required placeholder="How/when it was signed (e.g. wet-signed at kickoff meeting 3/2, scanned by Dana)" aria-label="Provenance"></textarea>
+                    <button class="btn btn-sm">Upload</button>
+                    <p class="hint">Labeled “externally signed”. No in-app signature evidence is created.</p></form></details>
+            @if ($contract->isExecuted() && ! $contract->terminated_at)
+            <details class="card"><summary class="card-head cursor-pointer"><h2>Terminate</h2></summary>
+                <form method="post" action="{{ $bu }}/contracts/{{ $contract->id }}/terminate" class="card-body space-y-2" data-confirm="Terminate? Linked recurring billing will be paused.">@csrf
+                    <input class="input" type="date" name="date" value="{{ $biz->localToday()->toDateString() }}" aria-label="Termination date"><input class="input" name="reason" required placeholder="Reason" aria-label="Reason">
+                    <button class="btn btn-danger btn-sm">Terminate agreement</button></form></details>
+            @endif
+            @if (! $contract->isExecuted())
+            <details class="card"><summary class="card-head cursor-pointer"><h2>Billing override</h2></summary>
+                <form method="post" action="{{ $bu }}/contracts/{{ $contract->id }}/billing-override" class="card-body space-y-2">@csrf
+                    <p class="text-xs text-slate-600">Allows milestone/recurring billing before in-app signatures complete (e.g. agreement executed elsewhere). Audited.</p>
+                    <input class="input" name="reason" required value="{{ $contract->billing_override_reason }}" aria-label="Reason"><button class="btn btn-sm">Save override</button></form></details>
+            @endif
+        @endif
+    </aside>
+</div>
+@endsection
