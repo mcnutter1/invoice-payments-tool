@@ -38,14 +38,15 @@
             <div class="card card-body">
                 <div class="flex items-center justify-between"><h3 class="text-base">Zelle</h3><span class="chip chip-violet">Fastest</span></div>
                 <p class="mt-1 text-sm text-slate-600">Send from your bank's app or website. {{ $business['name'] }} never sees your bank details.</p>
-                <details class="group mt-4">
-                    <summary class="btn w-full cursor-pointer list-none justify-center"><span class="group-open:hidden">Show Zelle details</span><span class="hidden group-open:inline">Hide Zelle details</span></summary>
                 @if ($zelleQr)
                     <figure class="mt-4 flex flex-col items-center text-center">
                         <img src="{{ $zelleQr }}" alt="Zelle QR code for {{ $z['recipient_name'] }}" class="h-44 w-44 rounded-lg border border-slate-200 bg-white object-contain p-2">
                         <figcaption class="mt-2 text-xs text-slate-500">Scan with your bank's Zelle app</figcaption>
                     </figure>
                 @endif
+                {{-- With a QR code the typed details are optional, so they start collapsed. --}}
+                <details class="group mt-4" @if(! $zelleQr) open @endif>
+                    <summary class="btn w-full cursor-pointer list-none justify-center @if(! $zelleQr) hidden @endif"><span class="group-open:hidden">Show Zelle details</span><span class="hidden group-open:inline">Hide Zelle details</span></summary>
                 <dl class="mt-4 divide-y divide-slate-100 rounded-md border border-slate-200 text-sm">
                     <div class="flex items-center justify-between gap-2 px-3 py-2"><dt class="text-slate-500">Send to</dt><dd class="text-right font-medium">{{ $z['recipient_name'] }}</dd></div>
                     @foreach (array_filter(['Email' => $z['email'] ?? null, 'Mobile' => $z['phone'] ?? null]) as $k => $v)

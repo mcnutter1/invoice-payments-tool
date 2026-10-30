@@ -139,7 +139,7 @@
   .inv-meta dt { @apply text-slate-500 sm:w-32 sm:text-left; }
   .inv-meta dd { @apply text-slate-900 sm:w-40 sm:text-right; }
   .inv-callout { border-left: 3px solid var(--accent); @apply rounded-r bg-slate-50 px-3 py-2 text-sm text-slate-700; }
-  .inv-due { border: 2px solid var(--accent); @apply rounded-md p-4 sm:p-5; }
+  .inv-due { border: 1px solid #e2e8f0; border-left: 3px solid var(--accent); @apply rounded-md bg-slate-50/60 px-4 py-3 sm:ml-auto sm:w-full sm:max-w-xs; }
   .inv-thead { background: var(--accent); @apply text-[11px] font-semibold uppercase tracking-wider text-white; }
   .inv-table { @apply w-full text-sm; }
   .inv-table th { @apply px-3 py-2.5 text-left font-semibold; }

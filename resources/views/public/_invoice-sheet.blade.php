@@ -54,19 +54,19 @@
                 <div class="text-lg font-semibold text-slate-900">Cancelled</div>
                 <p class="mt-1 text-sm text-slate-600">This invoice was cancelled by {{ $business['name'] }} and is no longer payable.</p>
             @elseif ($invoice->balance_cents <= 0)
-                <div class="text-sm text-slate-500">Amount due</div>
-                <div class="text-3xl font-semibold text-emerald-700">Paid in full</div>
+                <div class="text-xs text-slate-500">Amount due</div>
+                <div class="text-2xl font-semibold text-emerald-700">Paid in full</div>
                 <p class="mt-1 text-sm text-slate-600">Thank you! No payment is due.</p>
             @else
-                <div class="text-sm text-slate-500">{{ $invoice->paid_cents > 0 ? 'Remaining balance' : 'Amount due' }}</div>
-                <div class="text-3xl font-semibold tabular-nums tracking-tight text-slate-900 sm:text-4xl">{{ $M($invoice->balance_cents) }}</div>
-                <div class="mt-1 text-sm {{ $invoice->isOverdue() ? 'font-semibold text-red-700' : 'text-slate-600' }}">Due {{ $invoice->due_date?->format('F j, Y') ?? 'on receipt' }}{{ $invoice->isOverdue() ? ' · past due' : '' }}</div>
+                <div class="text-xs text-slate-500">{{ $invoice->paid_cents > 0 ? 'Remaining balance' : 'Amount due' }}</div>
+                <div class="text-2xl font-semibold tabular-nums tracking-tight text-slate-900">{{ $M($invoice->balance_cents) }}</div>
+                <div class="text-sm {{ $invoice->isOverdue() ? 'font-semibold text-red-700' : 'text-slate-600' }}">Due {{ $invoice->due_date?->format('F j, Y') ?? 'on receipt' }}{{ $invoice->isOverdue() ? ' · past due' : '' }}</div>
                 @if ($invoice->paid_cents > 0)<p class="mt-1 text-sm text-slate-600">{{ $M($invoice->paid_cents) }} received of {{ $M($invoice->total_cents) }}.</p>@endif
             @endif
-            <div class="mt-4 grid gap-2 sm:flex sm:flex-wrap">
-                @if ($payable)<a class="btn btn-primary" href="{{ $preview ? '#howtopay' : '/i/v/'.$invoice->ulid.'/pay' }}">Pay now</a>@endif
-                <a class="btn" href="{{ $preview ? $pdfUrl : '/i/v/'.$invoice->ulid.'/pdf' }}" @if($preview) target="_blank" rel="noopener" @endif>Download PDF</a>
-                @if (! empty($instructions['check']) && $payable && ! $preview)<a class="btn" href="/i/v/{{ $invoice->ulid }}/remittance">Remittance slip</a>@endif
+            <div class="mt-3 flex flex-wrap gap-2">
+                @if ($payable)<a class="btn btn-primary btn-sm" href="{{ $preview ? '#howtopay' : '/i/v/'.$invoice->ulid.'/pay' }}">Pay now</a>@endif
+                <a class="btn btn-sm" href="{{ $preview ? $pdfUrl : '/i/v/'.$invoice->ulid.'/pdf' }}" @if($preview) target="_blank" rel="noopener" @endif>Download PDF</a>
+                @if (! empty($instructions['check']) && $payable && ! $preview)<a class="btn btn-sm" href="/i/v/{{ $invoice->ulid }}/remittance">Remittance slip</a>@endif
             </div>
         </div>
     </section>
