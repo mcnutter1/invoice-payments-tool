@@ -1,4 +1,4 @@
-@extends('layouts.public', ['accent' => $accent])
+@extends('layouts.public', ['accent' => $accent, 'wide' => true])
 @section('title', 'Invoice '.$invoice->number.' from '.($business['name'] ?? ''))
 @section('content')
 @php
@@ -23,114 +23,7 @@
 </div>
 @endif
 
-<article class="card overflow-hidden">
-    <header class="flex flex-wrap items-center justify-between gap-4 px-5 py-4 sm:px-6">
-        <div class="flex min-w-0 items-center gap-3">
-            @if ($logo)<img src="{{ $logo }}" alt="{{ $business['name'] }}" class="h-11 max-w-[9rem] object-contain">@endif
-            <div class="min-w-0">
-                <div class="truncate text-base font-semibold text-slate-900">{{ $business['name'] }}</div>
-                <div class="truncate text-xs text-slate-500">{{ implode(' · ', array_filter([$business['email'] ?? null, $business['phone'] ?? null])) }}</div>
-            </div>
-        </div>
-        <div class="text-right">
-            <div class="text-xs uppercase tracking-wide text-slate-500">Invoice</div>
-            <div class="font-mono text-base font-semibold text-slate-900">{{ $invoice->number ?? 'DRAFT' }}</div>
-        </div>
-    </header>
-
-    <section class="border-y border-slate-100 bg-slate-50/70 px-5 py-6 sm:px-6">
-        <div class="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-                <span class="chip {{ $statusClass }}">{{ $statusLabel }}</span>
-                @if ($invoice->status === 'void')
-                    <p class="mt-3 text-sm text-slate-600">This invoice was cancelled by {{ $business['name'] }} and is no longer payable.</p>
-                @elseif ($invoice->balance_cents <= 0)
-                    <div class="mt-2 text-3xl font-semibold text-emerald-700 sm:text-4xl">Paid in full</div>
-                    <p class="mt-1 text-sm text-slate-600">Thank you! No payment is due.</p>
-                @else
-                    <div class="mt-3 text-sm text-slate-500">{{ $invoice->paid_cents > 0 ? 'Remaining balance' : 'Amount due' }}</div>
-                    <div class="text-4xl font-semibold tabular-nums tracking-tight text-slate-900 sm:text-5xl">{{ $M($invoice->balance_cents) }}</div>
-                    <div class="mt-1 text-sm {{ $invoice->isOverdue() ? 'font-semibold text-red-700' : 'text-slate-600' }}">Due {{ $invoice->due_date?->format('F j, Y') }}{{ $invoice->isOverdue() ? ' · past due' : '' }}</div>
-                    @if ($invoice->paid_cents > 0)<p class="mt-1 text-sm text-slate-600">{{ $M($invoice->paid_cents) }} received of {{ $M($invoice->total_cents) }}.</p>@endif
-                @endif
-            </div>
-            <div class="flex flex-col gap-2 sm:items-end">
-                @if ($payable)<a class="btn btn-primary btn-lg w-full sm:w-auto" href="{{ $preview ? '#howtopay' : '/i/v/'.$invoice->ulid.'/pay' }}">Pay now</a>@endif
-                <div class="grid grid-cols-2 gap-2 sm:flex">
-                    <a class="btn" href="{{ $preview ? $pdfUrl : '/i/v/'.$invoice->ulid.'/pdf' }}" @if($preview) target="_blank" rel="noopener" @endif>Download PDF</a>
-                    @if (! empty($instructions['check']) && $payable && ! $preview)<a class="btn" href="/i/v/{{ $invoice->ulid }}/remittance">Remittance slip</a>@endif
-                </div>
-            </div>
-        </div>
-        @if ($agreementTitle)
-            <p class="mt-5 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
-                Invoice related to agreement:
-                @if ($agreement)<a class="font-medium" href="/i/v/{{ $invoice->ulid }}/agreement">{{ $agreementTitle }}</a>
-                    @if ($agreement->certificate_document_id)<a class="ml-1 text-xs text-slate-500" href="/i/v/{{ $invoice->ulid }}/agreement/certificate">(signature certificate)</a>@endif
-                @else<span class="font-medium">{{ $agreementTitle }}</span>@if ($invoice->contractVersion?->status === 'partially_signed') <span class="text-xs text-slate-500">(awaiting signatures)</span>@endif @endif
-            </p>
-        @endif
-        @if ($openClaim)
-            <div class="alert alert-info mt-4"><strong>Payment reported — awaiting confirmation.</strong> You reported a {{ $openClaim->method === 'zelle' ? 'Zelle' : 'check' }} payment of {{ $M($openClaim->reported_amount_cents) }} on {{ $openClaim->reported_date->format('M j') }}. {{ $business['name'] }} will confirm once it arrives.</div>
-        @endif
-    </section>
-
-    <section class="grid grid-cols-2 gap-4 px-5 py-5 text-sm sm:grid-cols-3 sm:px-6">
-        <div class="col-span-2 sm:col-span-1">
-            <div class="text-xs uppercase tracking-wide text-slate-500">Billed to</div>
-            <div class="mt-1 font-medium text-slate-900">{{ $client['display_name'] ?? '' }}</div>
-            @foreach ($client['address'] ?? [] as $line)<div class="text-slate-600">{{ $line }}</div>@endforeach
-        </div>
-        <div>
-            <div class="text-xs uppercase tracking-wide text-slate-500">Issued</div>
-            <div class="mt-1 text-slate-900">{{ $invoice->issue_date?->format('M j, Y') }}</div>
-            @if ($invoice->po_number)<div class="mt-2 text-xs uppercase tracking-wide text-slate-500">PO / reference</div><div class="text-slate-900">{{ $invoice->po_number }}</div>@endif
-        </div>
-        <div>
-            <div class="text-xs uppercase tracking-wide text-slate-500">Due</div>
-            <div class="mt-1 text-slate-900">{{ $invoice->due_date?->format('M j, Y') ?? 'On receipt' }}</div>
-        </div>
-    </section>
-
-    <section class="border-t border-slate-100">
-        <ul class="divide-y divide-slate-100 sm:hidden">
-            @foreach ($lines as $l)
-                <li class="flex justify-between gap-3 px-5 py-3 text-sm">
-                    <div class="min-w-0"><div class="font-medium text-slate-900">{{ $l->name }}</div>
-                        @if($l->description)<div class="whitespace-pre-line text-xs text-slate-500">{{ $l->description }}</div>@endif
-                        @if($template['show_quantity'] ?? true)<div class="text-xs text-slate-500">{{ rtrim(rtrim((string) $l->quantity, '0'), '.') }} × ${{ number_format((float) $l->unit_price, 2) }}</div>@endif</div>
-                    <div class="whitespace-nowrap font-medium tabular-nums">{{ $M($l->amount_cents) }}</div>
-                </li>
-            @endforeach
-        </ul>
-        <table class="tbl hidden sm:table">
-            <thead><tr><th class="pl-6">Description</th>@if($template['show_quantity'] ?? true)<th class="num">Qty</th><th class="num">Rate</th>@endif<th class="num pr-6">Amount</th></tr></thead>
-            <tbody>
-            @foreach ($lines as $l)
-                <tr><td class="pl-6"><div class="font-medium text-slate-900">{{ $l->name }}</div>@if($l->description)<div class="whitespace-pre-line text-xs text-slate-500">{{ $l->description }}</div>@endif</td>
-                    @if($template['show_quantity'] ?? true)<td class="num">{{ rtrim(rtrim((string) $l->quantity, '0'), '.') }}</td><td class="num">${{ number_format((float) $l->unit_price, 2) }}</td>@endif
-                    <td class="num pr-6">{{ $M($l->amount_cents) }}</td></tr>
-            @endforeach
-            </tbody>
-        </table>
-        <dl class="ml-auto max-w-sm space-y-1.5 px-5 py-5 text-sm sm:px-6">
-            <div class="flex justify-between"><dt class="text-slate-600">Subtotal</dt><dd class="num">{{ $M($invoice->subtotal_cents) }}</dd></div>
-            @if ($invoice->discount_cents)<div class="flex justify-between"><dt class="text-slate-600">Discount</dt><dd class="num">−{{ $M($invoice->discount_cents) }}</dd></div>@endif
-            @foreach ($tax_lines as $t)<div class="flex justify-between"><dt class="text-slate-600">{{ $t->name }}</dt><dd class="num">{{ $M($t->tax_cents) }}</dd></div>@endforeach
-            <div class="flex justify-between border-t border-slate-200 pt-2 font-semibold"><dt>Total</dt><dd class="num">{{ $M($invoice->total_cents) }}</dd></div>
-            @if ($invoice->paid_cents)<div class="flex justify-between"><dt class="text-slate-600">Paid</dt><dd class="num">−{{ $M($invoice->paid_cents) }}</dd></div>@endif
-            @if ($invoice->credited_cents + $invoice->written_off_cents)<div class="flex justify-between"><dt class="text-slate-600">Credits</dt><dd class="num">−{{ $M($invoice->credited_cents + $invoice->written_off_cents) }}</dd></div>@endif
-            <div class="flex justify-between rounded-md bg-slate-50 px-2 py-1.5 text-base font-semibold"><dt>Balance due</dt><dd class="num">{{ $M(max(0, $invoice->balance_cents)) }}</dd></div>
-        </dl>
-    </section>
-
-    @if ($invoice->customer_note || $invoice->terms)
-        <section class="border-t border-slate-100 px-5 py-4 text-sm text-slate-600 sm:px-6">
-            @if ($invoice->customer_note)<p class="whitespace-pre-line">{{ $invoice->customer_note }}</p>@endif
-            @if ($invoice->terms)<h3 class="mt-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Terms &amp; conditions</h3><div class="mt-1 space-y-2 text-xs leading-5 text-slate-500 [&_strong]:font-semibold [&_strong]:text-slate-700">{!! \App\Support\InvoiceTerms::toHtml(\App\Support\InvoiceTerms::resolve($invoice->terms, $invoice)) !!}</div>@endif
-        </section>
-    @endif
-</article>
+@include('public._invoice-sheet')
 
 @if ($payable)
 @php $track = $preview ? '' : '/i/v/'.$invoice->ulid.'/event'; @endphp
@@ -145,6 +38,8 @@
             <div class="card card-body">
                 <div class="flex items-center justify-between"><h3 class="text-base">Zelle</h3><span class="chip chip-violet">Fastest</span></div>
                 <p class="mt-1 text-sm text-slate-600">Send from your bank's app or website. {{ $business['name'] }} never sees your bank details.</p>
+                <details class="group mt-4">
+                    <summary class="btn w-full cursor-pointer list-none justify-center"><span class="group-open:hidden">Show Zelle details</span><span class="hidden group-open:inline">Hide Zelle details</span></summary>
                 @if ($zelleQr)
                     <figure class="mt-4 flex flex-col items-center text-center">
                         <img src="{{ $zelleQr }}" alt="Zelle QR code for {{ $z['recipient_name'] }}" class="h-44 w-44 rounded-lg border border-slate-200 bg-white object-contain p-2">
@@ -159,6 +54,7 @@
                     <div class="flex items-center justify-between gap-2 px-3 py-2"><dt class="text-slate-500">Amount</dt><dd class="flex items-center gap-2"><span class="font-mono">{{ $amountValue }}</span><button type="button" class="btn btn-sm" data-copy="{{ $amountValue }}" data-track="amount" data-track-url="{{ $track }}">Copy</button></dd></div>
                     <div class="flex items-center justify-between gap-2 px-3 py-2"><dt class="text-slate-500">Memo</dt><dd class="flex items-center gap-2"><span class="font-mono">{{ $memo }}</span><button type="button" class="btn btn-sm" data-copy="{{ $memo }}" data-track="memo" data-track-url="{{ $track }}">Copy</button></dd></div>
                 </dl>
+                </details>
             </div>
         @endif
         @if (! empty($instructions['check']))
