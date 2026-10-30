@@ -220,7 +220,9 @@ class SignatureTest extends TestCase
         app(\App\Services\Invoicing\InvoiceService::class)->deleteDraft($final);
         $this->assertSame('pending', $ms[1]->fresh()->status);
         $this->assertNull($ms[1]->fresh()->invoice_id);
-        $this->signIn($owner)->get("/b/{$biz->ulid}/contracts/{$c->id}")->assertOk()->assertSee('Billing plan')->assertSee('Create invoices now');
+        $this->signIn($owner)->get("/b/{$biz->ulid}/contracts/{$c->id}")->assertOk()->assertSee('Billing plan')->assertSee('Create invoices now')->assertSee('Preview contract');
+        $this->signIn($owner)->get("/b/{$biz->ulid}/contracts/{$c->id}/versions/{$v->version}/preview")->assertOk()
+            ->assertSee('this is how signers see')->assertSee('Advisory')->assertSee('Pat Signer');
     }
 
     public function test_term_begin_and_open_ended_term_are_separate_from_effective_date(): void

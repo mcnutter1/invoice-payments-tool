@@ -211,6 +211,7 @@ Route::middleware('central')->group(function () {
             Route::get('/contracts', [C\ContractController::class, 'index']);
             Route::get('/contracts/{id}', [C\ContractController::class, 'show'])->whereNumber('id');
             Route::get('/contracts/{id}/versions/{version}/{kind}', [C\ContractController::class, 'download'])->whereNumber('id')->whereIn('kind', ['document', 'signed', 'certificate']);
+            Route::get('/contracts/{id}/versions/{version}/preview', [C\ContractController::class, 'preview'])->whereNumber('id')->whereNumber('version');
             Route::get('/contract-templates', [C\ContractController::class, 'templates']);
         });
         Route::middleware('perm:contracts.manage')->group(function () {

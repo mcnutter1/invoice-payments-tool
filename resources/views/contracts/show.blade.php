@@ -12,6 +12,7 @@
     </div>
     <div class="flex flex-wrap gap-2">
         @if ($myCountersign)<a class="btn btn-primary" href="{{ $bu }}/contracts/{{ $contract->id }}/countersign">Countersign now</a>@endif
+        @if ($current && ! $current->source_document_id)<a class="btn" href="{{ $bu }}/contracts/{{ $contract->id }}/versions/{{ $current->version }}/preview" target="_blank" rel="noopener">Preview contract</a>@endif
         @if ($current && in_array($current->status, ['draft']) && $ctx->can('contracts.manage'))
             <a class="btn" href="{{ $bu }}/contracts/{{ $contract->id }}/edit">Edit draft</a>
             <a class="btn" href="{{ $bu }}/contracts/{{ $contract->id }}/versions/{{ $current->version }}/document" target="_blank" rel="noopener">Preview PDF</a>

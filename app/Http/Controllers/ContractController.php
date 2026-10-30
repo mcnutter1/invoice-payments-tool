@@ -243,6 +243,22 @@ class ContractController extends Controller
         return back()->with('status', 'Billing override recorded.');
     }
 
+    public function preview(int $id, int $version)
+    {
+        $c = $this->contract($id)->load('client');
+        $v = ContractVersion::where('business_id', $c->business_id)->where('contract_id', $c->id)->where('version', $version)->with('recipients')->firstOrFail();
+        $business = $this->biz();
+
+        return view('contracts.preview', [
+            'contract' => $c,
+            'version' => $v,
+            'business' => $business,
+            'html' => $v->source_document_id ? null : ContractService::toHtml($v->snapshot['rendered'] ?? ''),
+            'logo' => app(DocumentStore::class)->dataUri($business->logo),
+            'accent' => $business->brand('accent'),
+        ]);
+    }
+
     public function download(int $id, int $version, string $kind, DocumentStore $docs, PdfRenderer $pdf)
     {
         $c = $this->contract($id);
