@@ -225,6 +225,18 @@ class SignatureTest extends TestCase
             ->assertSee('this is how signers see')->assertSee('Advisory')->assertSee('Pat Signer');
     }
 
+    public function test_rich_text_keeps_unwrapped_text_and_only_safe_color_and_size(): void
+    {
+        $out = \App\Support\RichText::sanitize('<p>A <span style="font-weight: normal;">unbolded</span> <font color="#ff0000">font</font> '
+            .'<span style="color: #b91c1c; font-size: 1.5em; background: url(https://x.test/t)">red</span> '
+            .'<span style="color: expression(alert(1)); font-size: 99em">bad</span><div>block</div></p>');
+        foreach (['unbolded', 'font', 'red', 'bad', 'block'] as $word) $this->assertStringContainsString($word, $out);
+        $this->assertStringContainsString('<span style="color: #b91c1c; font-size: 1.5em">red</span>', $out);
+        $this->assertStringNotContainsString('url(', $out);
+        $this->assertStringNotContainsString('expression', $out);
+        $this->assertStringNotContainsString('99em', $out);
+    }
+
     public function test_term_begin_and_open_ended_term_are_separate_from_effective_date(): void
     {
         $owner = $this->makeUser();

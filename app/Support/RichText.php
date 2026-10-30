@@ -3,16 +3,17 @@
 namespace App\Support;
 
 use Symfony\Component\HtmlSanitizer\HtmlSanitizer;
+use Symfony\Component\HtmlSanitizer\HtmlSanitizerAction;
 use Symfony\Component\HtmlSanitizer\HtmlSanitizerConfig;
 
-/** Agreement/template rich text: a small, server-enforced HTML whitelist (no styles, scripts, images or iframes). */
+/** Agreement/template rich text: a small, server-enforced HTML whitelist (no scripts, images or iframes; only color/size styles). */
 final class RichText
 {
     private static ?HtmlSanitizer $sanitizer = null;
 
     public static function isHtml(string $s): bool
     {
-        return (bool) preg_match('/^\s*<(p|h[1-6]|ul|ol|div|blockquote|table|hr|br|strong|em|b|i|u|s)\b/i', $s);
+        return (bool) preg_match('/^\s*<(p|h[1-6]|ul|ol|div|blockquote|table|hr|br|strong|em|b|i|u|s|span)\b/i', $s);
     }
 
     public static function sanitize(string $html): string
@@ -27,10 +28,16 @@ final class RichText
                 ->allowElement('table')->allowElement('thead')->allowElement('tbody')->allowElement('tr')
                 ->allowElement('th', ['colspan', 'rowspan'])->allowElement('td', ['colspan', 'rowspan'])
                 ->allowElement('a', ['href'])
+                ->allowElement('span', ['style'])
+                ->withAttributeSanitizer(new RichTextStyleSanitizer())
+                // Unknown wrappers (e.g. <font>, <div>) are unwrapped, never dropped with their text.
+                ->defaultAction(HtmlSanitizerAction::Block)
                 ->allowLinkSchemes(['https', 'http', 'mailto'])
                 ->allowRelativeLinks(false)
                 ->forceAttribute('a', 'rel', 'noopener noreferrer')
                 ->dropElement('script')->dropElement('style')->dropElement('iframe')->dropElement('object')
+                ->dropElement('head')->dropElement('title')->dropElement('noscript')->dropElement('template')
+                ->dropElement('svg')->dropElement('math')->dropElement('img')->dropElement('embed')->dropElement('textarea')->dropElement('select')
                 ->withMaxInputLength(200000)
         );
 

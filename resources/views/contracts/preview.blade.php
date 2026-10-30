@@ -9,23 +9,9 @@
         <a class="btn btn-sm" href="{{ $bu }}/contracts/{{ $contract->id }}">Back to agreement</a>
     </span>
 </div>
-<header class="mb-5 flex items-center gap-3">
-    @if ($logo)<img src="{{ $logo }}" alt="{{ $business->name() }}" class="h-11 max-w-[9rem] object-contain">@endif
-    <div class="min-w-0"><div class="truncate font-semibold text-slate-900">{{ $business->name() }}</div><div class="truncate text-xs text-slate-500">Agreement for {{ $contract->client->display_name }}</div></div>
-</header>
-<article class="card overflow-hidden">
-    <div class="card-head">
-        <div class="min-w-0"><h1 class="truncate text-lg">{{ $version->title }}</h1><div class="text-xs text-slate-500">{{ $contract->number }} · Version {{ $version->version }}</div></div>
-    </div>
-    @if ($html)
-        <div class="prose-doc px-5 py-5 text-[15px] leading-relaxed sm:px-8 sm:text-sm" aria-label="Agreement text">{!! $html !!}</div>
-    @else
-        <p class="card-body text-sm">This version is an uploaded document. Open the PDF to view it.</p>
-    @endif
-    @if ($version->sha256)
-        <div class="border-t border-slate-100 px-5 py-2 text-[11px] text-slate-500"><span class="break-all font-mono">SHA-256 {{ $version->sha256 }}</span></div>
-    @endif
-</article>
+@component('contracts._sheet', ['business' => $business, 'contract' => $contract, 'version' => $version, 'html' => $html, 'logo' => $logo, 'accent' => $accent])
+    @if ($version->sha256)@slot('foot')<span class="break-all font-mono">SHA-256 {{ $version->sha256 }}</span>@endslot @endif
+@endcomponent
 @if ($signers->isNotEmpty())
 <section class="card mt-4">
     <div class="card-head"><h2>Signers</h2></div>

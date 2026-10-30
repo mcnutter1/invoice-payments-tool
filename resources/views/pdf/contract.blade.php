@@ -1,46 +1,100 @@
 <!DOCTYPE html>
-<html><head><meta charset="utf-8"><style>
-    @page { margin: 70px 56px 70px 56px; }
-    body { font-family: "DejaVu Serif", serif; font-size: 10.5px; color: #111827; line-height: 1.5; }
-    footer { position: fixed; bottom: -48px; left: 0; right: 0; font-family: "DejaVu Sans", sans-serif; font-size: 7.5px; color: #6b7280; border-top: 1px solid #e5e7eb; padding-top: 5px; }
+<html><head><meta charset="utf-8">
+@php
+    $ac = preg_match('/^#[0-9a-fA-F]{6}$/', (string) $accent) ? $accent : '#1f5f8b';
+    $font = $font ?? 'DejaVu Sans';
+    $client = $contract->client;
+    $start = $contract->term_start_date ?? $contract->effective_date;
+    $hasTitle = (bool) preg_match('/^\s*<h1\b/i', (string) $html);
+    $sigs = ($signatures ?? null) ?: $recipients->map(fn ($r) => ['recipient' => $r, 'image' => null]);
+@endphp
+<style>
+    @page { margin: 96px 52px 72px 52px; }
+    body { font-family: "{{ $font }}", sans-serif; font-size: 10px; color: #1e293b; line-height: 1.55; }
+    header { position: fixed; top: -74px; left: 0; right: 0; height: 60px; }
+    header .bar { height: 5px; background: {{ $ac }}; margin-bottom: 10px; }
+    footer { position: fixed; bottom: -50px; left: 0; right: 0; font-size: 7.5px; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 5px; }
     footer .pg:after { content: "Page " counter(page); }
-    h1 { font-size: 18px; margin: 0 0 10px; } h2 { font-size: 13px; margin: 16px 0 6px; } h3 { font-size: 11px; margin: 12px 0 4px; }
-    p { margin: 0 0 8px; } ul, ol { margin: 0 0 8px 18px; padding: 0; } li { margin: 0 0 3px; } li ul, li ol { margin: 3px 0 0 16px; }
-    h4 { font-size: 10.5px; margin: 10px 0 4px; }
-    blockquote { margin: 0 0 8px; padding-left: 10px; border-left: 3px solid #d1d5db; color: #374151; }
-    hr { border: 0; border-top: 1px solid #d1d5db; margin: 12px 0; }
-    a { color: #111827; }
-    table.doc, .body table { border-collapse: collapse; width: 100%; margin: 0 0 8px; }
-    .body th, .body td { border: 1px solid #d1d5db; padding: 3px 5px; text-align: left; vertical-align: top; }
-    .head { border-bottom: 3px solid {{ preg_match('/^#[0-9a-fA-F]{6}$/', (string) $accent) ? $accent : '#1f5f8b' }}; padding-bottom: 8px; margin-bottom: 14px; font-family: "DejaVu Sans", sans-serif; }
-    .logo { max-height: 44px; max-width: 160px; }
-    .sigs { margin-top: 24px; page-break-inside: avoid; font-family: "DejaVu Sans", sans-serif; }
-    .sig { border: 1px solid #d1d5db; padding: 8px 10px; margin-bottom: 10px; page-break-inside: avoid; }
-    .sigline { height: 46px; border-bottom: 1px solid #111827; margin-bottom: 4px; font-family: "DejaVu Serif", serif; font-style: italic; font-size: 20px; }
+    table { border-collapse: collapse; }
+    .logo { max-height: 40px; max-width: 170px; }
+    .kicker { color: {{ $ac }}; font-size: 8px; font-weight: bold; letter-spacing: 2px; text-transform: uppercase; }
+    .muted { color: #64748b; font-size: 8.5px; }
+    .title { font-size: 20px; font-weight: bold; color: #0f172a; margin: 0 0 12px; }
+    .parties { width: 100%; background: #f8fafc; border-left: 3px solid {{ $ac }}; margin-bottom: 8px; }
+    .parties td { width: 50%; vertical-align: top; padding: 9px 12px; }
+    .label { color: {{ $ac }}; font-size: 7.5px; font-weight: bold; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 2px; }
+    .terms { width: 100%; border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; margin-bottom: 14px; }
+    .terms td { padding: 6px 4px; vertical-align: top; }
+    .terms .k { font-size: 7.5px; color: #64748b; text-transform: uppercase; letter-spacing: .6px; }
+    .terms .v { font-weight: bold; }
+    .body h1 { font-size: 20px; color: #0f172a; margin: 0 0 12px; }
+    .body h2 { font-size: 10.5px; color: {{ $ac }}; text-transform: uppercase; letter-spacing: .8px; margin: 16px 0 6px; padding-bottom: 3px; border-bottom: 1px solid #e2e8f0; page-break-after: avoid; }
+    .body h3 { font-size: 10.5px; margin: 12px 0 4px; page-break-after: avoid; } .body h4 { font-size: 10px; margin: 10px 0 4px; }
+    .body p { margin: 0 0 8px; } .body ul, .body ol { margin: 0 0 8px 18px; padding: 0; } .body li { margin: 0 0 3px; } .body li ul, .body li ol { margin: 3px 0 0 16px; }
+    .body blockquote { margin: 0 0 8px; padding: 4px 10px; border-left: 3px solid {{ $ac }}; background: #f8fafc; color: #334155; }
+    .body hr { border: 0; border-top: 1px solid #e2e8f0; margin: 12px 0; }
+    .body a { color: {{ $ac }}; }
+    .body table { border-collapse: collapse; width: 100%; margin: 0 0 8px; }
+    .body th, .body td { border: 1px solid #e2e8f0; padding: 4px 6px; text-align: left; vertical-align: top; }
+    .body th { background: #f8fafc; }
+    .sigs { margin-top: 26px; page-break-inside: avoid; }
+    .sigs h2 { font-size: 10.5px; color: {{ $ac }}; text-transform: uppercase; letter-spacing: .8px; margin: 0 0 8px; padding-bottom: 3px; border-bottom: 1px solid #e2e8f0; }
+    .sig { border: 1px solid #e2e8f0; border-top: 3px solid {{ $ac }}; padding: 8px 10px; page-break-inside: avoid; }
+    .sigline { height: 46px; border-bottom: 1px solid #0f172a; margin: 4px 0; font-family: "DejaVu Serif", serif; font-style: italic; font-size: 20px; }
     .sigimg { max-height: 44px; }
-    .muted { color: #6b7280; font-size: 8.5px; }
     .watermark { position: fixed; top: 280px; left: 60px; font-size: 110px; color: rgba(148,163,184,0.25); transform: rotate(-30deg); }
 </style></head><body>
 @isset($watermark)<div class="watermark">{{ $watermark }}</div>@endisset
+<header>
+    <div class="bar"></div>
+    <table style="width:100%"><tr>
+        <td style="vertical-align: top;">@if ($logo)<img class="logo" src="{{ $logo }}" alt="">@else<span style="font-size: 14px; font-weight: bold; color: {{ $ac }};">{{ $business->name() }}</span>@endif</td>
+        <td style="text-align:right; vertical-align: top;"><div class="kicker">Agreement</div><div style="font-weight: bold;">{{ $contract->number }}</div><div class="muted">Version {{ $version->version }}</div></td>
+    </tr></table>
+</header>
 <footer><table style="width:100%"><tr><td>{{ $contract->number }} v{{ $version->version }} · {{ $business->name() }}@isset($original_sha256) · Original SHA-256 {{ $original_sha256 }}@endisset</td><td style="text-align:right"><span class="pg"></span></td></tr></table></footer>
-<div class="head"><table style="width:100%"><tr>
-    <td>@if ($logo)<img class="logo" src="{{ $logo }}" alt="">@else<strong>{{ $business->name() }}</strong>@endif</td>
-    <td style="text-align:right; font-size: 9px;">{{ $contract->number }} · Version {{ $version->version }}</td>
-</tr></table></div>
+
+@unless ($hasTitle)<div class="title">{{ $version->title }}</div>@endunless
+<table class="parties"><tr>
+    <td>
+        <div class="label">Provider</div>
+        <div style="font-weight: bold;">{{ $business->legal_name ?: $business->name() }}</div>
+        @foreach ($business->addressLines() as $line)<div>{{ $line }}</div>@endforeach
+        @if ($business->public_email)<div>{{ $business->public_email }}</div>@endif
+    </td>
+    <td>
+        <div class="label">Client</div>
+        <div style="font-weight: bold;">{{ $client?->legal_name ?: $client?->display_name }}</div>
+        @foreach ($client?->billingAddressLines() ?? [] as $line)<div>{{ $line }}</div>@endforeach
+        @if ($client?->email)<div>{{ $client->email }}</div>@endif
+    </td>
+</tr></table>
+<table class="terms"><tr>
+    <td><div class="k">Effective</div><div class="v">{{ $contract->effective_date?->format('M j, Y') ?? '—' }}</div></td>
+    <td><div class="k">Term</div><div class="v">{{ $start ? $start->format('M j, Y').' – '.($contract->term_end_date?->format('M j, Y') ?? 'ongoing') : '—' }}</div></td>
+    <td><div class="k">Agreement</div><div class="v">{{ $contract->number }} · v{{ $version->version }}</div></td>
+</tr></table>
+
 <div class="body">{!! $html !!}</div>
+
 <div class="sigs">
     <h2>Signatures</h2>
-    @foreach (($signatures ?? null) ?: $recipients->map(fn ($r) => ['recipient' => $r, 'image' => null]) as $s)
-        @php $r = $s['recipient']; @endphp
-        <div class="sig">
-            <div class="muted">{{ $r->role === 'countersigner' ? 'For '.$business->legal_name : 'Client signer' }}</div>
-            <div class="sigline">@if (! empty($signed) && $r->signed_at)@if ($s['image'])<img class="sigimg" src="{{ $s['image'] }}" alt="">@else{{ $r->typed_name }}@endif @endif</div>
-            <table style="width:100%"><tr>
-                <td>Name: {{ ! empty($signed) && $r->typed_name ? $r->typed_name : $r->name }}{{ (! empty($signed) && $r->typed_title) ? ', '.$r->typed_title : ($r->title ? ', '.$r->title : '') }}</td>
-                <td style="text-align:right">Date: {{ ! empty($signed) && $r->signed_at ? $r->signed_at->utc()->format('Y-m-d H:i').' UTC' : '________________' }}</td>
-            </tr></table>
-            @if (! empty($signed) && $r->signed_at)<div class="muted">Signed electronically · {{ $r->signature_kind === 'draw' ? 'drawn' : 'typed' }} signature · {{ $r->verificationLabel() }} · see signature certificate</div>@endif
-        </div>
+    <table style="width:100%"><tr>
+    @foreach ($sigs->values() as $i => $s)
+        @php $r = $s['recipient']; $done = ! empty($signed) && $r->signed_at; @endphp
+        @if ($i > 0 && $i % 2 === 0)</tr><tr>@endif
+        <td style="width:50%; vertical-align: top; padding: 0 {{ $i % 2 ? '0' : '6px' }} 10px {{ $i % 2 ? '6px' : '0' }};">
+            <div class="sig">
+                <div class="label">{{ $r->role === 'countersigner' ? 'For '.($business->legal_name ?: $business->name()) : 'For '.($client?->legal_name ?: $client?->display_name) }}</div>
+                <div class="sigline">@if ($done)@if ($s['image'])<img class="sigimg" src="{{ $s['image'] }}" alt="">@else{{ $r->typed_name }}@endif @endif</div>
+                <div style="font-weight: bold;">{{ $done && $r->typed_name ? $r->typed_name : $r->name }}</div>
+                <div class="muted">{{ ($done && $r->typed_title) ? $r->typed_title : ($r->title ?: ' ') }}</div>
+                <div class="muted">Date: {{ $done ? $r->signed_at->utc()->format('M j, Y H:i').' UTC' : '________________' }}</div>
+                @if ($done)<div class="muted" style="font-size: 7.5px;">Signed electronically · {{ $r->signature_kind === 'draw' ? 'drawn' : 'typed' }} · {{ $r->verificationLabel() }}</div>@endif
+            </div>
+        </td>
     @endforeach
+    @if ($sigs->count() % 2 === 1)<td></td>@endif
+    </tr></table>
 </div>
 </body></html>

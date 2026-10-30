@@ -11,6 +11,17 @@
         <button type="button" class="rte-btn underline" data-cmd="underline" title="Underline (Ctrl+U)" aria-label="Underline">U</button>
         <button type="button" class="rte-btn line-through" data-cmd="strikeThrough" title="Strikethrough" aria-label="Strikethrough">S</button>
         <span class="rte-sep" aria-hidden="true"></span>
+        <select class="rte-select" data-rte-size aria-label="Font size" title="Font size">
+            <option value="">Size</option><option value="0.85em">Small</option><option value="">Normal</option><option value="1.25em">Large</option><option value="1.5em">Larger</option><option value="2em">Huge</option>
+        </select>
+        <label class="rte-btn relative cursor-pointer" title="Text color">
+            <span class="flex flex-col items-center leading-none"><span class="font-semibold">A</span><span class="mt-0.5 h-1 w-4 rounded-sm" style="background:#1f5f8b" data-rte-swatch></span></span>
+            <input type="color" class="absolute inset-0 h-full w-full cursor-pointer opacity-0" value="#1f5f8b" data-rte-color aria-label="Text color">
+        </label>
+        @foreach (['#0f172a' => 'Black', '#1f5f8b' => 'Blue', '#047857' => 'Green', '#b45309' => 'Amber', '#b91c1c' => 'Red', '#64748b' => 'Gray'] as $hex => $nm)
+            <button type="button" class="rte-swatch" style="background: {{ $hex }}" data-rte-color-preset="{{ $hex }}" title="{{ $nm }}" aria-label="{{ $nm }} text"></button>
+        @endforeach
+        <span class="rte-sep" aria-hidden="true"></span>
         <button type="button" class="rte-btn" data-cmd="insertUnorderedList" title="Bulleted list" aria-label="Bulleted list">&#8226;&#8212;</button>
         <button type="button" class="rte-btn" data-cmd="insertOrderedList" title="Numbered list" aria-label="Numbered list">1.</button>
         <button type="button" class="rte-btn" data-cmd="outdent" title="Decrease indent" aria-label="Decrease indent">&#8676;</button>

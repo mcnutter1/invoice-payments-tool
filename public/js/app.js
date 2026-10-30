@@ -336,8 +336,16 @@
   if (range) { const sync = () => $$('[data-custom]').forEach((i) => { i.closest('div').hidden = range.value !== 'custom'; }); range.addEventListener('change', sync); sync(); }
 
   // ---------- Rich text editor (contracts & templates) ----------
-  const RTE_TAGS = { P: 1, BR: 1, HR: 1, H1: 1, H2: 1, H3: 1, H4: 1, STRONG: 1, B: 1, EM: 1, I: 1, U: 1, S: 1, SUB: 1, SUP: 1, UL: 1, OL: 1, LI: 1, BLOCKQUOTE: 1, TABLE: 1, THEAD: 1, TBODY: 1, TR: 1, TH: 1, TD: 1, A: 1 };
+  const RTE_TAGS = { P: 1, BR: 1, HR: 1, H1: 1, H2: 1, H3: 1, H4: 1, STRONG: 1, B: 1, EM: 1, I: 1, U: 1, S: 1, SUB: 1, SUP: 1, UL: 1, OL: 1, LI: 1, BLOCKQUOTE: 1, TABLE: 1, THEAD: 1, TBODY: 1, TR: 1, TH: 1, TD: 1, A: 1, SPAN: 1 };
   const RTE_DROP = { SCRIPT: 1, STYLE: 1, IFRAME: 1, OBJECT: 1, EMBED: 1, META: 1, LINK: 1, TITLE: 1, HEAD: 1, IMG: 1, SVG: 1 };
+  const FONT_SIZES = { 1: '0.75em', 2: '0.85em', 3: '', 4: '1.25em', 5: '1.5em', 6: '2em', 7: '2em' };
+  // Mirrors App\Support\RichTextStyleSanitizer: only text color and font size survive.
+  const rteStyle = (el) => {
+    const out = [];
+    const c = el.style.color; if (c && /^(#[0-9a-f]{3,6}|rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\))$/i.test(c)) out.push('color: ' + c);
+    const s = el.style.fontSize; if (s && /^(x-small|small|medium|large|x-large|xx-large|\d{1,2}(\.\d)?(px|pt)|\d(\.\d{1,3})?em)$/.test(s)) out.push('font-size: ' + s);
+    return out.join('; ');
+  };
   // Paste cleanup only; the server sanitizes again with a strict whitelist.
   const cleanHtml = (html) => {
     const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -347,11 +355,20 @@
         if (n.nodeType !== 1) return;
         if (RTE_DROP[n.tagName]) { n.remove(); return; }
         walk(n);
+        if (n.tagName === 'FONT') {
+          const span = doc.createElement('span');
+          if (n.getAttribute('color')) span.style.color = n.getAttribute('color');
+          if (FONT_SIZES[n.getAttribute('size')]) span.style.fontSize = FONT_SIZES[n.getAttribute('size')];
+          if (n.style.color) span.style.color = n.style.color;
+          span.append(...Array.from(n.childNodes)); n.replaceWith(span); n = span;
+        }
         if (!RTE_TAGS[n.tagName]) { n.replaceWith(...Array.from(n.childNodes)); return; }
+        const style = n.tagName === 'SPAN' ? rteStyle(n) : '';
         Array.from(n.attributes).forEach((a) => {
           const keep = (n.tagName === 'A' && a.name === 'href' && /^(https?:|mailto:)/i.test(a.value)) || ((n.tagName === 'TD' || n.tagName === 'TH') && /^(colspan|rowspan)$/.test(a.name));
           if (!keep) n.removeAttribute(a.name);
         });
+        if (n.tagName === 'SPAN') { if (style) n.setAttribute('style', style); else n.replaceWith(...Array.from(n.childNodes)); }
       });
     };
     walk(doc.body);
@@ -371,7 +388,40 @@
     src.hidden = true; src.insertAdjacentElement('beforebegin', ed);
     if (!disabled) bar.hidden = false;
     const sync = () => { src.value = ed.textContent.trim() || ed.querySelector('hr,li') ? ed.innerHTML : ''; };
-    const exec = (cmd, val = null) => { ed.focus(); document.execCommand(cmd, false, val); sync(); refresh(); };
+    let saved = null;
+    const restore = () => {
+      ed.focus();
+      if (saved) { const s = window.getSelection(); s.removeAllRanges(); s.addRange(saved); }
+    };
+    const exec = (cmd, val = null) => { restore(); document.execCommand(cmd, false, val); sync(); refresh(); };
+    // Browsers emit <font> for color/size; normalize to the <span style> the server keeps.
+    const normalizeFonts = () => {
+      $$('font', ed).forEach((f) => {
+        const span = document.createElement('span');
+        if (f.getAttribute('color')) span.style.color = f.getAttribute('color');
+        if (FONT_SIZES[f.getAttribute('size')]) span.style.fontSize = FONT_SIZES[f.getAttribute('size')];
+        span.append(...Array.from(f.childNodes));
+        f.replaceWith(span);
+      });
+      $$('span', ed).forEach((s) => { const st = rteStyle(s); if (st) s.setAttribute('style', st); else s.replaceWith(...Array.from(s.childNodes)); });
+    };
+    const applyStyle = (cmd, val, size) => {
+      restore();
+      document.execCommand('styleWithCSS', false, false);
+      document.execCommand(cmd, false, val);
+      if (size !== undefined) {
+        $$('font[size="7"]', ed).forEach((f) => {
+          const sp = document.createElement('span');
+          if (size) sp.style.fontSize = size;
+          if (f.getAttribute('color')) sp.style.color = f.getAttribute('color');
+          sp.append(...Array.from(f.childNodes));
+          // Relative (em) sizes would compound if nested.
+          $$('span', sp).forEach((inner) => { inner.style.fontSize = ''; });
+          f.replaceWith(sp);
+        });
+      }
+      normalizeFonts(); sync(); refresh();
+    };
     const refresh = () => {
       $$('[data-cmd]', bar).forEach((b) => { try { b.setAttribute('aria-pressed', document.queryCommandState(b.dataset.cmd) ? 'true' : 'false'); } catch (_) { /* unsupported */ } });
       const block = (document.queryCommandValue('formatBlock') || 'p').toLowerCase().replace(/[<>]/g, '');
@@ -390,10 +440,19 @@
       exec(b.dataset.cmd);
     });
     $('[data-rte-block]', bar)?.addEventListener('change', (e) => exec('formatBlock', '<' + e.target.value + '>'));
+    $('[data-rte-size]', bar)?.addEventListener('change', (e) => { applyStyle('fontSize', '7', e.target.value); e.target.value = ''; });
+    const color = $('[data-rte-color]', bar);
+    color?.addEventListener('input', () => { const sw = $('[data-rte-swatch]', bar); if (sw) sw.style.background = color.value; });
+    color?.addEventListener('change', () => applyStyle('foreColor', color.value));
+    $$('[data-rte-color-preset]', bar).forEach((b) => b.addEventListener('click', () => applyStyle('foreColor', b.dataset.rteColorPreset)));
     $('[data-rte-field]', bar)?.addEventListener('change', (e) => { if (e.target.value) exec('insertText', '{{' + e.target.value + '}}'); e.target.value = ''; });
     ed.addEventListener('input', sync);
     ed.addEventListener('keyup', refresh); ed.addEventListener('mouseup', refresh);
-    document.addEventListener('selectionchange', () => { if (document.activeElement === ed) refresh(); });
+    document.addEventListener('selectionchange', () => {
+      const s = window.getSelection();
+      if (s.rangeCount && ed.contains(s.anchorNode)) saved = s.getRangeAt(0).cloneRange();
+      if (document.activeElement === ed) refresh();
+    });
     ed.addEventListener('paste', (e) => {
       const cd = e.clipboardData; if (!cd) return;
       e.preventDefault();

@@ -42,6 +42,7 @@
   .rte-btn[aria-pressed="true"] { @apply bg-brand-100 text-brand-800; }
   .rte-select { @apply h-9 rounded border border-slate-300 bg-white px-2 text-sm text-slate-700; }
   .rte-sep { @apply mx-0.5 hidden h-6 w-px bg-slate-300 sm:inline-block; }
+  .rte-swatch { @apply h-5 w-5 rounded-full border border-white ring-1 ring-slate-300 hover:ring-2 hover:ring-slate-500; }
   .rte-content { @apply min-h-[18rem] max-h-[70vh] overflow-y-auto px-4 py-3 text-base leading-relaxed text-slate-800 focus:outline-none sm:text-sm; }
   .field-error { @apply mt-1 text-xs font-medium text-red-700; }
   .tbl { @apply w-full text-sm; }
@@ -89,6 +90,22 @@
   .prose-doc table { @apply mb-3 border-collapse; }
   .prose-doc th, .prose-doc td { @apply border border-slate-300 px-2 py-1 text-left align-top; }
   .prose-doc > :first-child { @apply mt-0; }
+  /* Branded agreement sheet (web). --accent is set inline from the business brand. */
+  .doc-sheet { --accent: #1f5f8b; @apply overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-900/5; }
+  .doc-bar { height: 6px; background: var(--accent); }
+  .doc-head { @apply flex items-start justify-between gap-4 px-5 pt-5 sm:px-10 sm:pt-8; }
+  .doc-kicker { color: var(--accent); @apply text-xs font-semibold uppercase tracking-[0.18em]; }
+  .doc-title { @apply px-5 pt-5 text-2xl font-semibold leading-tight text-slate-900 sm:px-10 sm:text-3xl; }
+  .doc-label { color: var(--accent); @apply mb-1 text-[11px] font-semibold uppercase tracking-wider; }
+  .doc-parties { @apply mx-5 mt-5 grid gap-4 rounded-lg bg-slate-50 p-4 text-sm text-slate-700 sm:mx-10 sm:grid-cols-2; }
+  .doc-terms { @apply mx-5 mt-3 grid grid-cols-2 gap-3 border-y border-slate-100 py-3 text-sm sm:mx-10 sm:grid-cols-3; }
+  .doc-terms dt { @apply text-[11px] uppercase tracking-wider text-slate-500; }
+  .doc-terms dd { @apply font-medium text-slate-900; }
+  .doc-body { @apply px-5 py-6 text-[15px] leading-relaxed text-slate-800 sm:px-10 sm:text-sm; }
+  .doc-body h1, .doc-body h2 { color: var(--accent); }
+  .doc-body h2 { @apply mt-6 border-b border-slate-100 pb-1 text-[0.95rem] uppercase tracking-wide; }
+  .doc-body blockquote { border-left-color: var(--accent); }
+  .doc-foot { @apply flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 bg-slate-50 px-5 py-2 text-[11px] text-slate-500 sm:px-10; }
   .sr-only-focusable:not(:focus) { @apply sr-only; }
   .panel { @apply rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-900/5 sm:p-6; }
   .panel-label { @apply text-xs font-medium uppercase tracking-wider text-slate-500; }

@@ -67,6 +67,7 @@ class PublicContractController extends Controller
         return view('public.contract', [
             'recipient' => $r->fresh(),
             'version' => $v,
+            'contract' => \App\Models\Contract::with('client')->find($v->contract_id),
             'business' => $business,
             'html' => $v->source_document_id ? null : ContractService::toHtml($v->snapshot['rendered'] ?? ''),
             'signing' => $signing,

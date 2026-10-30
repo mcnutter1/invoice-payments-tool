@@ -290,6 +290,7 @@ class ContractService
             'recipients' => $v->recipients()->whereIn('role', ['client_signer', 'countersigner'])->get(),
             'logo' => $this->docs->dataUri($business->logo),
             'accent' => $business->brand('accent'),
+            'font' => in_array($business->brand('font'), \App\Services\Documents\PdfRenderer::FONTS, true) ? $business->brand('font') : 'DejaVu Sans',
         ];
     }
 

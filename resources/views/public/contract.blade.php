@@ -10,10 +10,7 @@
         ['Sign', $recipient->status === 'signed'],
     ]));
 @endphp
-<header class="mb-5 flex items-center gap-3">
-    @if ($logo)<img src="{{ $logo }}" alt="{{ $business->name() }}" class="h-11 max-w-[9rem] object-contain">@endif
-    <div class="min-w-0"><div class="truncate font-semibold text-slate-900">{{ $business->name() }}</div><div class="truncate text-xs text-slate-500">Agreement for {{ $recipient->name }}</div></div>
-</header>
+<p class="mb-4 text-sm text-slate-600">Agreement from <span class="font-semibold text-slate-900">{{ $business->name() }}</span> for {{ $recipient->name }}</p>
 
 @if ($version->status === 'completed')
     <div class="card card-body mb-4 border-emerald-200 bg-emerald-50">
@@ -47,23 +44,10 @@
 </ol>
 @endif
 
-<article class="card overflow-hidden">
-    <div class="card-head">
-        <div class="min-w-0"><h1 class="truncate text-lg">{{ $version->title }}</h1><div class="text-xs text-slate-500">Version {{ $version->version }}</div></div>
-        <div class="flex shrink-0 gap-2">
-            @if ($version->rendered_document_id)<a class="btn btn-sm" href="/c/r/{{ $recipient->id }}/document">PDF</a>@endif
-        </div>
-    </div>
-    @if ($html)
-        <div class="prose-doc max-h-[65vh] overflow-auto px-5 py-5 text-[15px] leading-relaxed sm:px-8 sm:text-sm" tabindex="0" aria-label="Agreement text">{!! $html !!}</div>
-    @else
-        <p class="card-body text-sm">Open the PDF to review the full document before signing.</p>
-    @endif
-    <div class="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-5 py-2 text-[11px] text-slate-500">
-        <span class="break-all font-mono">SHA-256 {{ $version->sha256 }}</span>
-        <a href="/c/r/{{ $recipient->id }}/consent">E-sign consent (copy)</a>
-    </div>
-</article>
+@component('contracts._sheet', ['business' => $business, 'contract' => $contract, 'version' => $version, 'html' => $html, 'logo' => $logo, 'accent' => $accent, 'scroll' => $signing])
+    @slot('actions')@if ($version->rendered_document_id)<a class="btn btn-sm" href="/c/r/{{ $recipient->id }}/document">PDF</a>@endif @endslot
+    @slot('foot')<span class="break-all font-mono">SHA-256 {{ $version->sha256 }}</span><a href="/c/r/{{ $recipient->id }}/consent">E-sign consent (copy)</a>@endslot
+@endcomponent
 
 @if ($signing)
 <section class="mt-6 space-y-4">
