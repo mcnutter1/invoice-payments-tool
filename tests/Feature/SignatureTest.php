@@ -242,6 +242,36 @@ class SignatureTest extends TestCase
             \App\Support\RichText::sanitize('<p><strong>Bold <span style="font-weight: normal; position: fixed">plain</span></strong></p>'));
     }
 
+    public function test_countersigner_can_sign_a_prepared_version_before_sending(): void
+    {
+        $owner = $this->makeUser();
+        $biz = $this->makeBusiness($owner);
+        $client = $this->makeClient($biz);
+        $svc = app(ContractService::class);
+        $c = $svc->create($biz, ['client_id' => $client->id, 'title' => 'SOW', 'template_id' => $biz->contractTemplates()->value('id'), 'effective_date' => '2026-07-01',
+            'scope' => 'x', 'fees' => 'y', 'signing_order' => 'sequential', 'signers' => [['name' => 'Pat', 'email' => 'pat@example.test']], 'countersigner_user_id' => $owner->id]);
+        $v = $svc->prepare($c->currentVersion);
+
+        $this->signIn($owner)->get("/b/{$biz->ulid}/contracts/{$c->id}")->assertOk()->assertSee('Sign before sending');
+        $this->signIn($owner)->get("/b/{$biz->ulid}/contracts/{$c->id}/countersign")->assertOk();
+        $this->signIn($owner)->post("/b/{$biz->ulid}/contracts/{$c->id}/countersign", [
+            'typed_name' => 'Owner Person', 'consent' => 1, 'authority' => 1, 'signature_kind' => 'type', 'document_sha256' => $v->sha256,
+        ])->assertRedirect()->assertSessionHas('status');
+        $v->refresh();
+        $this->assertSame('prepared', $v->status, 'still waiting to be sent');
+        $this->assertSame('signed', $v->recipients()->where('role', 'countersigner')->value('status'));
+        $this->assertSame('pending', $v->recipients()->where('role', 'client_signer')->value('status'));
+
+        $svc->send($v);
+        $this->assertSame('partially_signed', $v->fresh()->status);
+        $client = ContractRecipient::where('contract_version_id', $v->id)->where('role', 'client_signer')->first();
+        $this->assertSame('sent', $client->status);
+
+        $client->update(['status' => 'verified', 'verified_at' => now(), 'verified_email' => $client->email]);
+        app(\App\Services\Contracts\SignatureService::class)->sign($v->fresh(), $client->fresh(), ['typed_name' => 'Pat', 'consent' => true, 'authority' => true, 'signature_kind' => 'type', 'document_sha256' => $v->sha256]);
+        $this->assertSame('completed', $v->fresh()->status);
+    }
+
     public function test_term_begin_and_open_ended_term_are_separate_from_effective_date(): void
     {
         $owner = $this->makeUser();

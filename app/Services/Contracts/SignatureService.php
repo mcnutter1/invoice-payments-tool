@@ -29,10 +29,23 @@ class SignatureService
         private readonly PublicLinkService $links,
     ) {}
 
+    /** The business countersigner may sign a locked (prepared) version before it is sent. */
+    public static function isPreSign(ContractVersion $v, ContractRecipient $r): bool
+    {
+        return $v->status === 'prepared' && $r->role === 'countersigner' && $r->status === 'pending';
+    }
+
+    public static function canCountersignNow(ContractVersion $v, ContractRecipient $r): bool
+    {
+        return $r->role === 'countersigner' && (self::isPreSign($v, $r)
+            || (in_array($v->status, ['sent', 'partially_signed'], true) && $r->status === 'sent'));
+    }
+
     public function assertOpen(ContractVersion $v, ContractRecipient $r): void
     {
-        if (! in_array($v->status, ['sent', 'partially_signed'], true)) throw new DomainException('This agreement is no longer open for signing.');
-        if ($v->expires_at && $v->expires_at->isPast()) {
+        $preSign = self::isPreSign($v, $r);
+        if (! $preSign && ! in_array($v->status, ['sent', 'partially_signed'], true)) throw new DomainException('This agreement is no longer open for signing.');
+        if (! $preSign && $v->expires_at && $v->expires_at->isPast()) {
             $v->update(['status' => 'expired']);
             Contract::whereKey($v->contract_id)->update(['status' => 'expired']);
             throw new DomainException('This signing invitation has expired.');
@@ -40,7 +53,7 @@ class SignatureService
         if ($r->status === 'signed') throw new DomainException('You have already signed.');
         if ($r->status === 'declined') throw new DomainException('You declined this agreement.');
         if (! $r->isSigner()) throw new DomainException('This recipient does not sign.');
-        if (! in_array($r->status, ['sent', 'viewed', 'verified'], true)) throw new DomainException('It is not your turn to sign yet.');
+        if (! $preSign && ! in_array($r->status, ['sent', 'viewed', 'verified'], true)) throw new DomainException('It is not your turn to sign yet.');
     }
 
     public function recordView(ContractVersion $v, ContractRecipient $r): void
@@ -162,6 +175,9 @@ class SignatureService
             $remaining = $v->recipients()->whereIn('role', ['client_signer', 'countersigner'])->where('status', '!=', 'signed')->count();
             if ($remaining === 0) {
                 $this->complete($v);
+            } elseif ($v->status === 'prepared') {
+                // Signed ahead of sending: client signers are invited when the version is sent.
+                $this->contracts->event($v, $r, 'signed_before_sending');
             } else {
                 $v->update(['status' => 'partially_signed']);
                 Contract::whereKey($v->contract_id)->update(['status' => 'partially_signed']);

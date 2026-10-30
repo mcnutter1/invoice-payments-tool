@@ -11,7 +11,7 @@
             @if ($contract->externally_signed) · <span class="chip chip-gray">Externally signed — no in-app signature trail</span> @endif</p>
     </div>
     <div class="flex flex-wrap gap-2">
-        @if ($myCountersign)<a class="btn btn-primary" href="{{ $bu }}/contracts/{{ $contract->id }}/countersign">Countersign now</a>@endif
+        @if ($myCountersign)<a class="btn btn-primary" href="{{ $bu }}/contracts/{{ $contract->id }}/countersign">{{ $current->status === 'prepared' ? 'Sign before sending' : 'Countersign now' }}</a>@endif
         @if ($current && ! $current->source_document_id)<a class="btn" href="{{ $bu }}/contracts/{{ $contract->id }}/versions/{{ $current->version }}/preview" target="_blank" rel="noopener">Preview contract</a>@endif
         @if ($current && in_array($current->status, ['draft']) && $ctx->can('contracts.manage'))
             <a class="btn" href="{{ $bu }}/contracts/{{ $contract->id }}/edit">Edit draft</a>
@@ -32,6 +32,9 @@
     </div>
 </div>
 @if ($missing)<div class="alert alert-warn mt-4">Fill in missing merge fields before locking: {{ implode(', ', $missing) }}</div>@endif
+@if ($current && $current->status === 'prepared' && ! $current->recipients->contains('role', 'countersigner') && $ctx->can('contracts.countersign'))
+    <div class="alert alert-info mt-4">To sign this agreement for your business, it needs a business countersigner. The locked version can’t change: void it, create a new version, choose yourself as <strong>Business countersigner</strong>, then lock again.</div>
+@endif
 
 <div class="mt-6 grid gap-4 xl:grid-cols-3">
     <div class="space-y-4 xl:col-span-2">

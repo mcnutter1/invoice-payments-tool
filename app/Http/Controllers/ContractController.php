@@ -139,7 +139,7 @@ class ContractController extends Controller
             'missing' => $current && ! $current->source_document_id ? $this->service->render($current->body ?? '', $current->snapshot['merge'] ?? [])[1] : [],
             'invoiced' => $c->invoicedCents(),
             'collected' => $c->collectedCents(),
-            'myCountersign' => $current ? $current->recipients->first(fn ($r) => $r->role === 'countersigner' && $r->countersigner_user_id === $me->id && $r->status === 'sent') : null,
+            'myCountersign' => $current ? $current->recipients->first(fn ($r) => $r->countersigner_user_id === $me->id && SignatureService::canCountersignNow($current, $r)) : null,
         ]);
     }
 
@@ -311,7 +311,7 @@ class ContractController extends Controller
         $c = $this->contract($id);
         $v = $c->currentVersion;
         $r = $v?->recipients()->where('role', 'countersigner')->where('countersigner_user_id', $this->ctx()->user->id)->first();
-        abort_unless($r && $r->status === 'sent', 404);
+        abort_unless($r && SignatureService::canCountersignNow($v, $r), 404);
 
         return view('contracts.countersign', ['contract' => $c, 'version' => $v, 'recipient' => $r, 'consent' => SignatureService::CONSENT_TEXT,
             'html' => $v->source_document_id ? null : ContractService::toHtml($v->snapshot['rendered'] ?? ''),
@@ -355,7 +355,7 @@ class ContractController extends Controller
             Audit::log($this->biz(), 'member.signature_saved', $this->myMembership());
         }
 
-        return $this->to('/contracts/'.$id, 'Countersigned.');
+        return $this->to('/contracts/'.$id, $v->fresh()->status === 'prepared' ? 'Signed. Send it for signature when you’re ready — the client will see your signature is already in place.' : 'Countersigned.');
     }
 
     public function forgetSignature()

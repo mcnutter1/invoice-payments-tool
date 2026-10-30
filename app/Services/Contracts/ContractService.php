@@ -316,7 +316,9 @@ class ContractService
             $v->sent_at = now();
             $v->expires_at = now()->addDays($business->contract_link_ttl_days);
             $v->save();
-            Contract::whereKey($v->contract_id)->update(['status' => 'sent']);
+            $presigned = $v->recipients()->where('role', '!=', 'cc')->where('status', 'signed')->exists();
+            if ($presigned) $v->update(['status' => 'partially_signed']);
+            Contract::whereKey($v->contract_id)->update(['status' => $presigned ? 'partially_signed' : 'sent']);
             $this->event($v, null, 'sent');
             $this->inviteEligible($v);
             Audit::log($business, 'contract.sent', $v);
