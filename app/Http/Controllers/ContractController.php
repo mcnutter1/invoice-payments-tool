@@ -386,7 +386,7 @@ class ContractController extends Controller
 
     private function validateFields(string $body): void
     {
-        preg_match_all('/\{\{\s*([a-z_.]+)\s*\}\}/', $body, $m);
+        preg_match_all('/\{\{\s*([a-z0-9_.]+)\s*\}\}/', $body, $m);
         $unknown = array_diff(array_unique($m[1]), ContractService::MERGE_FIELDS);
         if ($unknown) throw new DomainException('Unknown merge fields: '.implode(', ', $unknown));
     }

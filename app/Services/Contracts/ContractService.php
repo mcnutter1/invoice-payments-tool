@@ -105,7 +105,7 @@ class ContractService
     {
         $missing = [];
         $html = RichText::isHtml($template);
-        $body = preg_replace_callback('/\{\{\s*([a-z_.]+)\s*\}\}/', function ($m) use ($data, &$missing, $html) {
+        $body = preg_replace_callback('/\{\{\s*([a-z0-9_.]+)\s*\}\}/', function ($m) use ($data, &$missing, $html) {
             $v = $data[$m[1]] ?? null;
             if ($v === null || $v === '') {
                 $missing[] = $m[1];
