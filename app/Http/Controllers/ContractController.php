@@ -366,6 +366,40 @@ class ContractController extends Controller
         return back()->with('status', 'Saved signature removed.');
     }
 
+    public function mySignature(DocumentStore $docs)
+    {
+        return view('contracts.my-signature', ['savedSignature' => ($d = $this->savedSignatureDoc()) ? $docs->dataUri($d) : null]);
+    }
+
+    public function uploadSignature(Request $request, DocumentStore $docs)
+    {
+        $request->validate(['signature' => ['required', 'file', 'max:2048', 'mimetypes:image/png']]);
+        $bytes = (string) file_get_contents($request->file('signature')->getRealPath());
+        $info = @getimagesizefromstring($bytes);
+        if (! str_starts_with($bytes, "\x89PNG") || ! $info || $info[2] !== IMAGETYPE_PNG || $info[0] > 4000 || $info[1] > 4000) {
+            throw new DomainException('Upload a PNG image of your signature (up to 4000×4000 pixels).');
+        }
+        // Re-encode: strips metadata and fits the signature line (max 600×200), keeping transparency.
+        $src = @imagecreatefromstring($bytes) ?: throw new DomainException('That PNG could not be read.');
+        $scale = min(1, 600 / imagesx($src), 200 / imagesy($src));
+        $w = max(1, (int) round(imagesx($src) * $scale));
+        $h = max(1, (int) round(imagesy($src) * $scale));
+        $dst = imagecreatetruecolor($w, $h);
+        imagealphablending($dst, false);
+        imagesavealpha($dst, true);
+        imagefill($dst, 0, 0, imagecolorallocatealpha($dst, 255, 255, 255, 127));
+        imagecopyresampled($dst, $src, 0, 0, 0, 0, $w, $h, imagesx($src), imagesy($src));
+        ob_start();
+        imagepng($dst, null, 9);
+        $png = (string) ob_get_clean();
+
+        $doc = $docs->put($this->biz(), 'saved_signature', 'my-signature.png', $png, 'image/png');
+        $this->myMembership()->update(['signature_document_id' => $doc->id]);
+        Audit::log($this->biz(), 'member.signature_saved', $this->myMembership(), null, ['source' => 'upload']);
+
+        return back()->with('status', 'Signature saved. It’s selected automatically when you countersign.');
+    }
+
     public function templates()
     {
         return view('contracts.templates', ['templates' => ContractTemplate::where('business_id', $this->biz()->id)->get(), 'fields' => ContractService::MERGE_FIELDS]);

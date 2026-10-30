@@ -16,6 +16,8 @@
         @include('public._sign-form', ['action' => $bu.'/contracts/'.$contract->id.'/countersign', 'recipient' => $recipient, 'version' => $version, 'consent' => $consent, 'savedSignature' => $savedSignature, 'allowSave' => true])
         @if ($savedSignature)
             <form method="post" action="{{ $bu }}/my-signature/delete" class="text-right" data-confirm="Remove your saved signature?">@csrf<button class="btn btn-ghost btn-sm">Remove saved signature</button></form>
+        @else
+            <p class="text-right text-sm"><a href="{{ $bu }}/my-signature">Upload a PNG of your signature</a></p>
         @endif
     </div>
 </div>

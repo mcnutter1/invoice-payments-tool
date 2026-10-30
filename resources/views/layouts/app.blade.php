@@ -92,6 +92,7 @@
             </summary>
             <div class="menu right-0">
                 <div class="px-3 py-2 text-xs text-slate-500">{{ $ctx->user->email }}</div>
+                @if ($ctx->can('contracts.countersign'))<a href="{{ $bu }}/my-signature">My signature</a>@endif
                 <form method="post" action="/auth/logout">@csrf<button type="submit">Sign out</button></form>
             </div>
         </details>

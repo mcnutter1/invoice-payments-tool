@@ -238,6 +238,8 @@ Route::middleware('central')->group(function () {
         Route::get('/contracts/{id}/countersign', [C\ContractController::class, 'countersignForm'])->middleware('perm:contracts.countersign');
         Route::post('/contracts/{id}/countersign', [C\ContractController::class, 'countersign'])->middleware(['perm:contracts.countersign', 'central:fresh']);
         Route::post('/my-signature/delete', [C\ContractController::class, 'forgetSignature'])->middleware('perm:contracts.countersign');
+        Route::get('/my-signature', [C\ContractController::class, 'mySignature'])->middleware('perm:contracts.countersign');
+        Route::post('/my-signature', [C\ContractController::class, 'uploadSignature'])->middleware(['perm:contracts.countersign', 'throttle:sensitive']);
 
         // Recurring billing
         Route::middleware('perm:recurring.view')->group(function () {

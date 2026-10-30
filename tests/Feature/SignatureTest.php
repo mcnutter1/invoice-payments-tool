@@ -272,6 +272,33 @@ class SignatureTest extends TestCase
         $this->assertSame('completed', $v->fresh()->status);
     }
 
+    public function test_member_can_upload_a_png_signature_for_reuse(): void
+    {
+        $owner = $this->makeUser();
+        $biz = $this->makeBusiness($owner);
+        $img = imagecreatetruecolor(1200, 300);
+        imagefill($img, 0, 0, imagecolorallocate($img, 255, 255, 255));
+        imageline($img, 20, 250, 1180, 40, 0);
+        $path = tempnam(sys_get_temp_dir(), 'sig').'.png';
+        imagepng($img, $path);
+
+        $this->signIn($owner)->get("/b/{$biz->ulid}/my-signature")->assertOk()->assertSee('No saved signature yet');
+        $this->signIn($owner)->post("/b/{$biz->ulid}/my-signature", [
+            'signature' => new \Illuminate\Http\UploadedFile($path, 'sig.png', 'image/png', null, true),
+        ])->assertRedirect()->assertSessionHas('status');
+        $docId = \App\Models\Membership::where('business_id', $biz->id)->where('user_id', $owner->id)->value('signature_document_id');
+        $this->assertNotNull($docId);
+        $size = getimagesizefromstring(\App\Models\PrivateDocument::find($docId)->contents());
+        $this->assertSame([600, 150], [$size[0], $size[1]], 'resized to fit the signature line');
+        $this->signIn($owner)->get("/b/{$biz->ulid}/my-signature")->assertOk()->assertSee('Your saved signature');
+
+        $txt = tempnam(sys_get_temp_dir(), 'sig');
+        file_put_contents($txt, 'not an image');
+        $this->signIn($owner)->post("/b/{$biz->ulid}/my-signature", [
+            'signature' => new \Illuminate\Http\UploadedFile($txt, 'sig.png', 'image/png', null, true),
+        ])->assertSessionHasErrors('signature');
+    }
+
     public function test_term_begin_and_open_ended_term_are_separate_from_effective_date(): void
     {
         $owner = $this->makeUser();
