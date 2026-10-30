@@ -140,6 +140,8 @@ class ContractController extends Controller
             'invoiced' => $c->invoicedCents(),
             'collected' => $c->collectedCents(),
             'myCountersign' => $current ? $current->recipients->first(fn ($r) => $r->countersigner_user_id === $me->id && SignatureService::canCountersignNow($current, $r)) : null,
+            'deleteBlocker' => $this->service->deleteBlocker($c),
+            'renewals' => Contract::where('business_id', $c->business_id)->where('renewed_from_id', $c->id)->get(['id', 'number', 'status']),
         ]);
     }
 
@@ -231,6 +233,33 @@ class ContractController extends Controller
         $this->service->terminate($this->contract($id), $data['date'], $data['reason']);
 
         return $this->to('/contracts/'.$id, 'Agreement terminated. Linked recurring billing was paused.');
+    }
+
+    public function reactivate(Request $request, int $id)
+    {
+        $data = $request->validate(['term_end_date' => ['nullable', 'date'], 'reason' => ['required', 'string', 'max:500']]);
+        $this->service->reactivate($this->contract($id), $data['term_end_date'] ?? null, $data['reason']);
+
+        return $this->to('/contracts/'.$id, 'Agreement reactivated. Paused contract billing was resumed.');
+    }
+
+    public function renew(int $id)
+    {
+        $new = $this->service->renew($this->contract($id));
+
+        return $this->to('/contracts/'.$new->id.'/edit', 'Renewal draft '.$new->number.' created for the next term. Review the dates and terms, then lock and send.');
+    }
+
+    public function destroy(Request $request, int $id)
+    {
+        $c = $this->contract($id);
+        $data = $request->validate(['confirm' => ['required', 'string'], 'reason' => ['nullable', 'string', 'max:500']]);
+        if (strcasecmp(trim($data['confirm']), $c->number) !== 0) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['confirm' => 'Type '.$c->number.' to confirm.']);
+        }
+        $this->service->delete($c, ($data['reason'] ?? null) ?: 'Deleted by user');
+
+        return $this->to('/contracts', 'Agreement '.$c->number.' was permanently deleted.');
     }
 
     public function billingOverride(Request $request, int $id)

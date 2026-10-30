@@ -224,6 +224,9 @@ Route::middleware('central')->group(function () {
             Route::post('/contracts/{id}/amend', [C\ContractController::class, 'amend']);
             Route::post('/contracts/{id}/external', [C\ContractController::class, 'uploadExternal']);
             Route::post('/contracts/{id}/terminate', [C\ContractController::class, 'terminate']);
+            Route::post('/contracts/{id}/reactivate', [C\ContractController::class, 'reactivate']);
+            Route::post('/contracts/{id}/renew', [C\ContractController::class, 'renew']);
+            Route::post('/contracts/{id}/delete', [C\ContractController::class, 'destroy']);
             Route::post('/contracts/{id}/billing-override', [C\ContractController::class, 'billingOverride'])->middleware('central:fresh');
             Route::post('/contract-templates', [C\ContractController::class, 'storeTemplate']);
             Route::post('/contract-templates/{id}', [C\ContractController::class, 'updateTemplate']);

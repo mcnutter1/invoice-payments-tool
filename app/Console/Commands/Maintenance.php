@@ -16,7 +16,7 @@ class Maintenance extends Command
 
     protected $signature = 'finance:maintenance';
 
-    protected $description = 'Expire signing envelopes, prune transient data.';
+    protected $description = 'Expire signing envelopes and ended agreement terms, prune transient data.';
 
     public function handle(): int
     {
@@ -32,6 +32,7 @@ class Maintenance extends Command
                 $expired++;
             }
             DB::table('auth_callback_nonces')->where('expires_at', '<', now())->delete();
+            $ended = app(\App\Services\Contracts\ContractService::class)->expireEndedTerms();
             // Uploaded bank CSVs are only needed during the import wizard.
             $csv = 0;
             foreach (PrivateDocument::where('kind', 'import_csv')->where('created_at', '<', now()->subDays(7))->get() as $doc) {
@@ -40,7 +41,7 @@ class Maintenance extends Command
                 $csv++;
             }
 
-            return ['expired_envelopes' => $expired, 'pruned_csv' => $csv];
+            return ['expired_envelopes' => $expired, 'ended_terms' => $ended, 'pruned_csv' => $csv];
         });
     }
 }

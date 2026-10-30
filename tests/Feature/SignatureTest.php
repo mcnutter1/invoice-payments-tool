@@ -264,6 +264,16 @@ class SignatureTest extends TestCase
 
         $svc->send($v);
         $this->assertSame('partially_signed', $v->fresh()->status);
+
+        // A partially signed agreement can be linked to an invoice; a draft cannot.
+        $this->signIn($owner)->get("/b/{$biz->ulid}/invoices/new?client={$c->client_id}")->assertOk()->assertSee('(partially signed)');
+        $line = [['name' => 'Retainer', 'quantity' => '1', 'unit_price' => '100']];
+        $this->signIn($owner)->post("/b/{$biz->ulid}/invoices", ['client_id' => $c->client_id, 'discount_type' => 'none', 'contract_version_id' => $v->id, 'lines' => $line])
+            ->assertSessionHasNoErrors()->assertRedirect();
+        $this->assertSame($c->id, \App\Models\Invoice::where('contract_version_id', $v->id)->value('contract_id'));
+        $draft = $svc->create($biz, ['client_id' => $c->client_id, 'title' => 'Other', 'template_id' => $biz->contractTemplates()->value('id'), 'scope' => 'x', 'fees' => 'y', 'signing_order' => 'parallel']);
+        $this->signIn($owner)->post("/b/{$biz->ulid}/invoices", ['client_id' => $c->client_id, 'discount_type' => 'none', 'contract_version_id' => $draft->current_version_id, 'lines' => $line])
+            ->assertSessionHasErrors('contract_version_id');
         $client = ContractRecipient::where('contract_version_id', $v->id)->where('role', 'client_signer')->first();
         $this->assertSame('sent', $client->status);
 
@@ -297,6 +307,58 @@ class SignatureTest extends TestCase
         $this->signIn($owner)->post("/b/{$biz->ulid}/my-signature", [
             'signature' => new \Illuminate\Http\UploadedFile($txt, 'sig.png', 'image/png', null, true),
         ])->assertSessionHasErrors('signature');
+    }
+
+    public function test_contract_lifecycle_expire_reactivate_renew_and_delete(): void
+    {
+        [$owner, $biz, $c, $v] = $this->sentContract(['term_start_date' => now()->subYear()->toDateString(), 'term_end_date' => now()->subDays(2)->toDateString(), 'monthly_fee' => '100']);
+        $r = ContractRecipient::where('contract_version_id', $v->id)->first();
+        $r->update(['status' => 'verified', 'verified_at' => now(), 'verified_email' => $r->email]);
+        app(\App\Services\Contracts\SignatureService::class)->sign($v->fresh(), $r->fresh(), ['typed_name' => 'Pat', 'consent' => true, 'authority' => true, 'signature_kind' => 'type', 'document_sha256' => $v->sha256]);
+        $svc = app(ContractService::class);
+        $schedule = \App\Models\RecurringSchedule::where('contract_id', $c->id)->sole();
+        $schedule->update(['status' => 'active']);
+
+        // Term ended -> expired, billing paused.
+        $this->artisan('finance:maintenance')->assertSuccessful();
+        $c->refresh();
+        $this->assertSame('expired', $c->status);
+        $this->assertTrue($c->isEnded());
+        $this->assertSame('paused', $schedule->fresh()->status);
+        $this->signIn($owner)->get("/b/{$biz->ulid}/contracts/{$c->id}")->assertOk()->assertSee('term ended')->assertSee('Reactivate')->assertSee('Renew');
+
+        // Reactivate with a new end date.
+        $end = now()->addMonths(6)->toDateString();
+        $this->signIn($owner)->post("/b/{$biz->ulid}/contracts/{$c->id}/reactivate", ['term_end_date' => $end, 'reason' => 'Extended by email'])->assertRedirect();
+        $c->refresh();
+        $this->assertSame('completed', $c->status);
+        $this->assertNull($c->ended_at);
+        $this->assertSame($end, $c->term_end_date->toDateString());
+        $this->assertSame('active', $schedule->fresh()->status);
+        $this->assertSame($end, $schedule->fresh()->end_date->toDateString());
+
+        // Renew creates a new draft for the next term.
+        $this->signIn($owner)->post("/b/{$biz->ulid}/contracts/{$c->id}/renew")->assertRedirect();
+        $new = \App\Models\Contract::where('renewed_from_id', $c->id)->sole();
+        $this->assertSame('draft', $new->status);
+        $this->assertSame(\Illuminate\Support\Carbon::parse($end)->addDay()->toDateString(), $new->term_start_date->toDateString());
+        $this->assertSame(10000, (int) $new->billing_monthly_cents);
+        $this->assertSame('pat@example.test', $new->currentVersion->recipients()->where('role', 'client_signer')->value('email'));
+
+        // Signed contract with billing can't be deleted; the renewal draft can.
+        $this->assertNotNull($svc->deleteBlocker($c->fresh()));
+        $this->signIn($owner)->post("/b/{$biz->ulid}/contracts/{$new->id}/delete", ['confirm' => 'wrong'])->assertSessionHasErrors('confirm');
+        $this->signIn($owner)->post("/b/{$biz->ulid}/contracts/{$new->id}/delete", ['confirm' => $new->number])->assertRedirect("/b/{$biz->ulid}/contracts");
+        $this->assertNull(\App\Models\Contract::find($new->id));
+        $this->assertSame(0, \App\Models\ContractVersion::where('contract_id', $new->id)->count());
+
+        // A signed agreement without billing links can be deleted with its documents.
+        \App\Models\RecurringSchedule::where('contract_id', $c->id)->delete();
+        $docs = \App\Models\ContractVersion::where('contract_id', $c->id)->pluck('signed_document_id')->filter()->all();
+        $this->assertNotEmpty($docs);
+        $svc->delete($c->fresh(), 'test');
+        $this->assertSame(0, \App\Models\PrivateDocument::whereIn('id', $docs)->count());
+        $this->assertSame(0, \App\Models\SignatureEvent::where('contract_version_id', $v->id)->count());
     }
 
     public function test_term_begin_and_open_ended_term_are_separate_from_effective_date(): void

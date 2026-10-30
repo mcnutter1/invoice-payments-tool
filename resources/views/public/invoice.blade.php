@@ -59,7 +59,7 @@
                 Invoice related to agreement:
                 @if ($agreement)<a class="font-medium" href="/i/v/{{ $invoice->ulid }}/agreement">{{ $agreementTitle }}</a>
                     @if ($agreement->certificate_document_id)<a class="ml-1 text-xs text-slate-500" href="/i/v/{{ $invoice->ulid }}/agreement/certificate">(signature certificate)</a>@endif
-                @else<span class="font-medium">{{ $agreementTitle }}</span>@endif
+                @else<span class="font-medium">{{ $agreementTitle }}</span>@if ($invoice->contractVersion?->status === 'partially_signed') <span class="text-xs text-slate-500">(awaiting signatures)</span>@endif @endif
             </p>
         @endif
         @if ($openClaim)

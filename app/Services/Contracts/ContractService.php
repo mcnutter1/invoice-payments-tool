@@ -467,6 +467,132 @@ class ContractService
         });
     }
 
+    /** Signed agreements whose term has ended become 'expired'; their contract-driven billing is paused. Run by the scheduler. */
+    public function expireEndedTerms(): int
+    {
+        $n = 0;
+        $due = Contract::where('status', 'completed')->whereNull('terminated_at')->whereNull('ended_at')
+            ->whereNotNull('term_end_date')->whereDate('term_end_date', '<', now()->addDay()->toDateString())->get();
+        foreach ($due as $c) {
+            $today = Business::find($c->business_id)?->localToday() ?? today();
+            if (! $c->term_end_date->lt($today)) continue;
+            DB::transaction(function () use ($c) {
+                $c->update(['status' => 'expired', 'ended_at' => now()]);
+                RecurringSchedule::where('business_id', $c->business_id)->where('contract_id', $c->id)->where('status', 'active')->update(['status' => 'paused']);
+                Audit::log($c->business_id, 'contract.term_ended', $c, null, ['term_end_date' => $c->term_end_date->toDateString()], null, 'system');
+            });
+            $n++;
+        }
+
+        return $n;
+    }
+
+    /** Bring an ended (expired or terminated) signed agreement back into force with a new end date. */
+    public function reactivate(Contract $contract, ?string $newEndDate, string $reason): void
+    {
+        if (! $contract->isEnded()) throw new DomainException('Only an expired or terminated signed agreement can be reactivated.');
+        $business = Business::findOrFail($contract->business_id);
+        if ($newEndDate && Carbon::parse($newEndDate)->lt($business->localToday())) throw new DomainException('The new end date must be today or later.');
+        DB::transaction(function () use ($contract, $newEndDate, $reason) {
+            $before = ['status' => $contract->status, 'term_end_date' => $contract->term_end_date?->toDateString(), 'terminated_at' => $contract->terminated_at?->toDateString()];
+            $contract->update([
+                'status' => 'completed', 'ended_at' => null, 'terminated_at' => null, 'termination_reason' => null,
+                'term_end_date' => $newEndDate ?: null, 'term_open_ended' => ! $newEndDate,
+            ]);
+            foreach (RecurringSchedule::where('business_id', $contract->business_id)->where('contract_id', $contract->id)->where('status', 'paused')->get() as $s) {
+                $s->update(['status' => 'active', 'end_date' => $s->origin === 'contract' ? ($newEndDate ?: null) : $s->end_date]);
+            }
+            Audit::log($contract->business_id, 'contract.reactivated', $contract, $before, ['term_end_date' => $newEndDate], $reason);
+        });
+    }
+
+    /** Start a renewal: a new draft agreement for the next term, copied from the signed one. */
+    public function renew(Contract $contract): Contract
+    {
+        if (! $contract->wasExecuted()) throw new DomainException('Only signed agreements can be renewed.');
+        $source = $contract->versions()->where('status', 'completed')->whereNull('source_document_id')->first()
+            ?? $contract->versions()->whereNull('source_document_id')->first();
+        $business = Business::findOrFail($contract->business_id);
+        $start = $contract->term_end_date ? $contract->term_end_date->copy()->addDay() : $business->localToday();
+        $oldStart = $contract->term_start_date ?? $contract->effective_date;
+        $end = $contract->term_end_date && $oldStart ? $start->copy()->addDays($oldStart->diffInDays($contract->term_end_date)) : null;
+        $input = $source?->snapshot['input'] ?? [];
+        $data = [
+            'client_id' => $contract->client_id,
+            'title' => $contract->title,
+            'body' => $source?->body ?? '',
+            'scope' => $input['scope'] ?? null, 'fees' => $input['fees'] ?? null, 'payment_terms_days' => $input['payment_terms_days'] ?? null,
+            'recurring_fee' => $input['recurring_fee'] ?? null,
+            'effective_date' => $start->toDateString(),
+            'term_start_date' => $start->toDateString(),
+            'term_end_date' => $end?->toDateString(),
+            'term_open_ended' => ! $end && $contract->term_open_ended,
+            'committed_value' => Money::toDecimalString($contract->committed_value_cents),
+            'value_cap' => $contract->value_cap_cents ? Money::toDecimalString($contract->value_cap_cents) : null,
+            'cap_behavior' => $contract->cap_behavior,
+            'signing_order' => $contract->signing_order,
+            'require_email_code' => $contract->require_email_code,
+            'monthly_fee' => $contract->billing_monthly_cents ? Money::toDecimalString($contract->billing_monthly_cents) : null,
+            'monthly_fee_description' => $contract->billing_monthly_description,
+            'billing_start_date' => null,
+            'billing_auto' => $contract->billing_auto,
+            'billing_mode' => $contract->billing_mode,
+            'signers' => $source ? $source->recipients()->where('role', 'client_signer')->get()->map(fn ($r) => ['name' => $r->name, 'email' => $r->email, 'title' => $r->title])->all() : [],
+            'countersigner_user_id' => $source?->recipients()->where('role', 'countersigner')->value('countersigner_user_id'),
+        ];
+
+        return DB::transaction(function () use ($business, $contract, $data) {
+            $new = $this->create($business, $data);
+            $new->update(['renewed_from_id' => $contract->id]);
+            Audit::log($business, 'contract.renewal_started', $new, null, ['renewed_from' => $contract->number]);
+
+            return $new->fresh();
+        });
+    }
+
+    /** Why a contract can't be deleted, or null if it can. */
+    public function deleteBlocker(Contract $c): ?string
+    {
+        if ($c->invoices()->exists()) return 'invoices are linked to it. Void or delete those invoices first, or terminate the agreement instead.';
+        if ($c->schedules()->exists()) return 'recurring billing is linked to it. Delete that schedule first, or terminate the agreement instead.';
+        if ($c->versions()->whereIn('status', ['sent', 'partially_signed'])->exists()) return 'it is out for signature. Void it first.';
+        if (Contract::where('renewed_from_id', $c->id)->exists()) return 'a renewal was created from it.';
+
+        return null;
+    }
+
+    /** Permanently remove an agreement, its versions, signature trail and stored documents. */
+    public function delete(Contract $contract, string $reason): void
+    {
+        if ($blocker = $this->deleteBlocker($contract)) throw new DomainException('This agreement can’t be deleted: '.$blocker);
+        DB::transaction(function () use ($contract, $reason) {
+            $bid = $contract->business_id;
+            $versionIds = ContractVersion::where('business_id', $bid)->where('contract_id', $contract->id)->pluck('id');
+            $recipients = ContractRecipient::where('business_id', $bid)->whereIn('contract_version_id', $versionIds);
+            $recipientIds = (clone $recipients)->pluck('id');
+            $docIds = array_merge(
+                (clone $recipients)->pluck('signature_document_id')->all(),
+                ContractVersion::whereIn('id', $versionIds)->get(['source_document_id', 'rendered_document_id', 'signed_document_id', 'certificate_document_id'])
+                    ->flatMap(fn ($v) => [$v->source_document_id, $v->rendered_document_id, $v->signed_document_id, $v->certificate_document_id])->all(),
+            );
+            DB::table('public_tokens')->where('business_id', $bid)->where(fn ($q) => $q->whereIn('contract_version_id', $versionIds)->orWhereIn('contract_recipient_id', $recipientIds))->delete();
+            DB::table('email_outbox')->where('business_id', $bid)->where(fn ($q) => $q->whereIn('contract_version_id', $versionIds)->orWhereIn('contract_recipient_id', $recipientIds))
+                ->update(['contract_version_id' => null, 'contract_recipient_id' => null]);
+            DB::table('document_access_events')->where('business_id', $bid)->whereIn('contract_version_id', $versionIds)->update(['contract_version_id' => null]);
+            DB::table('expenses')->where('business_id', $bid)->where('contract_id', $contract->id)->update(['contract_id' => null]);
+            DB::table('electronic_consents')->where('business_id', $bid)->whereIn('contract_recipient_id', $recipientIds)->delete();
+            DB::table('signature_events')->where('business_id', $bid)->whereIn('contract_version_id', $versionIds)->delete();
+            ContractRecipient::whereIn('id', $recipientIds)->delete();
+            ContractMilestone::where('business_id', $bid)->where('contract_id', $contract->id)->delete();
+            $contract->update(['current_version_id' => null]);
+            ContractVersion::whereIn('id', $versionIds)->delete();
+            $snapshot = ['number' => $contract->number, 'title' => $contract->title, 'client_id' => $contract->client_id, 'status' => $contract->status];
+            $contract->delete();
+            $this->docs->deleteMany($bid, array_values(array_unique(array_filter($docIds))));
+            Audit::log($bid, 'contract.deleted', $contract, $snapshot, null, $reason);
+        });
+    }
+
     public function event(ContractVersion $v, ?ContractRecipient $r, string $event, array $details = []): SignatureEvent
     {
         $seq = (int) SignatureEvent::where('contract_version_id', $v->id)->lockForUpdate()->max('seq') + 1;

@@ -11,6 +11,9 @@ class ContractVersion extends Model
 {
     use BelongsToBusiness;
 
+    /** Version statuses an invoice may be linked to. */
+    public const INVOICE_LINKABLE = ['completed', 'partially_signed'];
+
     protected $guarded = ['id'];
 
     protected $casts = [

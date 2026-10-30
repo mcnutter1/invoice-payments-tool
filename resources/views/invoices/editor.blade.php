@@ -39,9 +39,9 @@
             <div><label class="label" for="contract_version_id">Linked agreement</label>
                 <select class="input" id="contract_version_id" name="contract_version_id" data-client-filtered="#client_id">
                     <option value="">None</option>
-                    @foreach ($contractVersions as $v)<option value="{{ $v->id }}" data-client="{{ $v->contract->client_id }}" @selected(old('contract_version_id', $invoice?->contract_version_id) == $v->id)>{{ $v->contract->number }} v{{ $v->version }} · {{ $v->title }}</option>@endforeach
+                    @foreach ($contractVersions as $v)<option value="{{ $v->id }}" data-client="{{ $v->contract->client_id }}" @selected(old('contract_version_id', $invoice?->contract_version_id) == $v->id)>{{ $v->contract->number }} v{{ $v->version }} · {{ $v->title }}{{ $v->status !== 'completed' ? ' ('.str_replace('_', ' ', $v->status).')' : '' }}</option>@endforeach
                 </select>
-                <p class="hint">Only this client's completed agreements are listed; the client will see that exact signed version.</p>
+                <p class="hint">This client’s signed and partially signed agreements are listed. The client sees the signed copy once everyone has signed.</p>
             </div>
         </div>
 

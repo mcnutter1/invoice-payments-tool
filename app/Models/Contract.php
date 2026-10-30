@@ -22,6 +22,7 @@ class Contract extends Model
         'billing_start_date' => 'date',
         'billing_auto' => 'boolean',
         'terminated_at' => 'datetime',
+        'ended_at' => 'datetime',
         'externally_signed' => 'boolean',
         'require_email_code' => 'boolean',
     ];
@@ -43,6 +44,21 @@ class Contract extends Model
     {
         return $this->status === 'completed' || ($this->externally_signed && $this->external_provenance);
     }
+
+    /** Was ever fully signed, even if its term has since ended or it was terminated. */
+    public function wasExecuted(): bool
+    {
+        return $this->isExecuted() || ($this->externally_signed && $this->external_provenance)
+            || $this->versions()->where('status', 'completed')->exists();
+    }
+
+    /** Signed agreement whose term ran out or that was terminated. */
+    public function isEnded(): bool
+    {
+        return (bool) ($this->ended_at || $this->terminated_at) && $this->wasExecuted();
+    }
+
+    public function renewedFrom(): BelongsTo { return $this->belongsTo(Contract::class, 'renewed_from_id'); }
 
     public function isActiveForBilling(?\DateTimeInterface $on = null): bool
     {

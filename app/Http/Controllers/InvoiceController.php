@@ -101,7 +101,9 @@ class InvoiceController extends Controller
             'products' => Product::where('business_id', $b->id)->where('active', true)->orderBy('name')->get(),
             'taxRates' => TaxRate::where('business_id', $b->id)->where('active', true)->orderBy('name')->get(),
             'incomeAccounts' => ChartAccount::where('business_id', $b->id)->where('type', 'income')->where('is_active', true)->orderBy('code')->get(),
-            'contractVersions' => ContractVersion::with('contract')->where('business_id', $b->id)->whereIn('status', ['completed'])->get(),
+            'contractVersions' => ContractVersion::with('contract')->where('business_id', $b->id)
+                ->where(fn ($q) => $q->whereIn('status', ContractVersion::INVOICE_LINKABLE)->when($invoice?->contract_version_id, fn ($q, $id) => $q->orWhere('id', $id)))
+                ->orderByDesc('id')->get(),
             'selectedClient' => $clientId,
         ];
     }
@@ -122,7 +124,14 @@ class InvoiceController extends Controller
             'service_start' => ['nullable', 'date'],
             'service_end' => ['nullable', 'date', 'after_or_equal:service_start'],
             'po_number' => ['nullable', 'string', 'max:80'],
-            'contract_version_id' => ['nullable', 'integer'],
+            'contract_version_id' => ['nullable', 'integer', function ($attr, $value, $fail) use ($b) {
+                $v = ContractVersion::where('business_id', $b->id)->find($value);
+                // Links made earlier (e.g. milestone billing under an override) stay valid.
+                $linked = $v && \App\Models\Invoice::where('business_id', $b->id)->where('contract_version_id', $v->id)->exists();
+                if (! $v || (! in_array($v->status, ContractVersion::INVOICE_LINKABLE, true) && ! $linked)) {
+                    $fail('Choose a signed or partially signed agreement.');
+                }
+            }],
             'discount_type' => ['required', Rule::in(['none', 'percent', 'amount'])],
             'discount_value' => ['nullable', 'numeric', 'min:0'],
             'customer_note' => ['nullable', 'string', 'max:5000'],

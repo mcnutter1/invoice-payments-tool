@@ -8,7 +8,9 @@
             @if ($contract->effective_date) · Effective {{ $contract->effective_date->format('M j, Y') }} @endif
             @if ($term = $contract->termLabel()) · Term {{ $term }} @endif
             @if ($contract->terminated_at) · <span class="text-red-700">Terminated {{ $contract->terminated_at->format('M j, Y') }}</span> @endif
-            @if ($contract->externally_signed) · <span class="chip chip-gray">Externally signed — no in-app signature trail</span> @endif</p>
+            @if ($contract->externally_signed) · <span class="chip chip-gray">Externally signed — no in-app signature trail</span> @endif
+            @if ($contract->renewed_from_id) · Renewal of <a href="{{ $bu }}/contracts/{{ $contract->renewed_from_id }}">{{ $contract->renewedFrom?->number }}</a> @endif
+            @foreach ($renewals as $rn) · Renewed as <a href="{{ $bu }}/contracts/{{ $rn->id }}">{{ $rn->number }}</a> @endforeach</p>
     </div>
     <div class="flex flex-wrap gap-2">
         @if ($myCountersign)<a class="btn btn-primary" href="{{ $bu }}/contracts/{{ $contract->id }}/countersign">{{ $current->status === 'prepared' ? 'Sign before sending' : 'Countersign now' }}</a>@endif
@@ -28,10 +30,20 @@
         @if ($current && in_array($current->status, ['voided', 'declined', 'expired']) && $ctx->can('contracts.manage'))
             <form method="post" action="{{ $bu }}/contracts/{{ $contract->id }}/new-version">@csrf<button class="btn btn-primary">Create new version</button></form>
         @endif
+        @if ($ctx->can('contracts.manage') && $contract->wasExecuted() && $renewals->isEmpty())
+            <form method="post" action="{{ $bu }}/contracts/{{ $contract->id }}/renew" data-confirm="Start a renewal? A new draft agreement is created for the next term; this one stays as the signed record.">@csrf<button class="btn {{ $contract->isEnded() ? 'btn-primary' : '' }}">Renew</button></form>
+        @endif
         @if ($ctx->can('invoices.manage') && $contract->isExecuted())<a class="btn" href="{{ $bu }}/invoices/new?client={{ $contract->client_id }}">New invoice</a>@endif
     </div>
 </div>
 @if ($missing)<div class="alert alert-warn mt-4">Fill in missing merge fields before locking: {{ implode(', ', $missing) }}</div>@endif
+@if ($contract->isEnded())
+    <div class="alert alert-warn mt-4">
+        @if ($contract->terminated_at)This agreement was terminated on {{ $contract->terminated_at->format('F j, Y') }}{{ $contract->termination_reason ? ' ('.$contract->termination_reason.')' : '' }}.
+        @else This agreement’s term ended on {{ $contract->term_end_date?->format('F j, Y') }}.@endif
+        Contract billing is paused. <strong>Renew</strong> to sign a new term, or <strong>Reactivate</strong> to extend this one.
+    </div>
+@endif
 @if ($current && $current->status === 'prepared' && ! $current->recipients->contains('role', 'countersigner') && $ctx->can('contracts.countersign'))
     <div class="alert alert-info mt-4">To sign this agreement for your business, it needs a business countersigner. The locked version can’t change: void it, create a new version, choose yourself as <strong>Business countersigner</strong>, then lock again.</div>
 @endif
@@ -115,10 +127,11 @@
             @endforeach
         </ul></div>
         @endif
-        @if ($ctx->can('contracts.send') && $current && in_array($current->status, ['prepared', 'sent', 'partially_signed']))
-            <form method="post" action="{{ $bu }}/contracts/{{ $contract->id }}/void" class="card card-body space-y-2" data-confirm="Void this envelope? Signers can no longer sign it.">@csrf
-                <label class="label" for="void-reason">Void envelope</label><input class="input" id="void-reason" name="reason" required placeholder="Reason">
-                <button class="btn btn-danger btn-sm">Void</button></form>
+        @if ($ctx->can('contracts.send') && $current && in_array($current->status, ['draft', 'prepared', 'sent', 'partially_signed']))
+            <form method="post" action="{{ $bu }}/contracts/{{ $contract->id }}/void" class="card card-body space-y-2" data-confirm="Void this agreement version? It can no longer be signed.">@csrf
+                <label class="label" for="void-reason">Void {{ in_array($current->status, ['sent', 'partially_signed']) ? 'envelope' : 'agreement' }}</label><input class="input" id="void-reason" name="reason" required placeholder="Reason">
+                <button class="btn btn-danger btn-sm">Void</button>
+                <p class="hint">Signed agreements can’t be voided — terminate them instead.</p></form>
         @endif
         @if ($ctx->can('contracts.manage'))
             <details class="card"><summary class="card-head cursor-pointer"><h2>Upload externally signed copy</h2></summary>
@@ -133,12 +146,32 @@
                     <input class="input" type="date" name="date" value="{{ $biz->localToday()->toDateString() }}" aria-label="Termination date"><input class="input" name="reason" required placeholder="Reason" aria-label="Reason">
                     <button class="btn btn-danger btn-sm">Terminate agreement</button></form></details>
             @endif
+            @if ($contract->isEnded())
+            <details class="card" open><summary class="card-head cursor-pointer"><h2>Reactivate</h2></summary>
+                <form method="post" action="{{ $bu }}/contracts/{{ $contract->id }}/reactivate" class="card-body space-y-2" data-confirm="Reactivate this agreement? Paused contract billing will resume.">@csrf
+                    <p class="text-xs text-slate-600">Puts the signed agreement back in force without re-signing (e.g. both parties agreed to extend). Audited. To change terms, use Renew instead.</p>
+                    <div><label class="label" for="re-end">New end date</label><input class="input" type="date" id="re-end" name="term_end_date" min="{{ $biz->localToday()->toDateString() }}"><p class="hint">Leave blank for open-ended.</p></div>
+                    <input class="input" name="reason" required placeholder="Reason (e.g. extended by email 10/30)" aria-label="Reason">
+                    <button class="btn btn-primary btn-sm">Reactivate</button></form></details>
+            @endif
             @if (! $contract->isExecuted())
             <details class="card"><summary class="card-head cursor-pointer"><h2>Billing override</h2></summary>
                 <form method="post" action="{{ $bu }}/contracts/{{ $contract->id }}/billing-override" class="card-body space-y-2">@csrf
                     <p class="text-xs text-slate-600">Allows milestone/recurring billing before in-app signatures complete (e.g. agreement executed elsewhere). Audited.</p>
                     <input class="input" name="reason" required value="{{ $contract->billing_override_reason }}" aria-label="Reason"><button class="btn btn-sm">Save override</button></form></details>
             @endif
+            <details class="card border-red-200"><summary class="card-head cursor-pointer"><h2 class="text-red-800">Delete agreement</h2></summary>
+                @if ($deleteBlocker)
+                    <p class="card-body text-sm text-slate-600">Can’t be deleted: {{ $deleteBlocker }}</p>
+                @else
+                    <form method="post" action="{{ $bu }}/contracts/{{ $contract->id }}/delete" class="card-body space-y-2">@csrf
+                        <p class="text-xs text-slate-600">Permanently removes this agreement, every version, the signature trail and stored PDFs. This can’t be undone.@if ($contract->wasExecuted()) <strong>This agreement was signed</strong> — keep a copy of the signed PDF first if you need it.@endif</p>
+                        <label class="label" for="del-confirm">Type <span class="font-mono">{{ $contract->number }}</span> to confirm</label>
+                        <input class="input" id="del-confirm" name="confirm" required autocomplete="off">
+                        <input class="input" name="reason" placeholder="Reason (optional)" aria-label="Reason">
+                        <button class="btn btn-danger btn-sm">Delete permanently</button></form>
+                @endif
+            </details>
         @endif
     </aside>
 </div>
