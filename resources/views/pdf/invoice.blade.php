@@ -125,6 +125,7 @@
                 @if (! empty($instructions['zelle']['email']))<div>{{ $instructions['zelle']['email'] }}</div>@endif
                 @if (! empty($instructions['zelle']['phone']))<div>{{ $instructions['zelle']['phone'] }}</div>@endif
                 <div>Memo: {{ $memo ?? 'invoice number' }}</div>
+                @if (! empty($zelleQr))<img src="{{ $zelleQr }}" alt="" style="width: 80px; height: 80px; margin-top: 4px;">@endif
                 <div class="muted" style="font-size:8px;">Use your bank's app. We never ask for your bank login.</div>
             </div></td>
         @endif

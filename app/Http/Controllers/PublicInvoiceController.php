@@ -83,9 +83,6 @@ class PublicInvoiceController extends Controller
         $vm = $presenter->viewModel($invoice);
         $claims = PaymentClaim::where('invoice_id', $invoice->id)->latest()->get();
         $business = Business::find($invoice->business_id);
-        $qr = ! empty($vm['instructions']['zelle']['qr_document_id'])
-            ? app(DocumentStore::class)->dataUri(PrivateDocument::where('business_id', $invoice->business_id)->find($vm['instructions']['zelle']['qr_document_id']))
-            : null;
         $agreement = $invoice->contract_version_id && $t->allows('view_contract')
             ? ContractVersion::where('business_id', $invoice->business_id)->where('id', $invoice->contract_version_id)->where('status', 'completed')->first()
             : null;
@@ -94,7 +91,6 @@ class PublicInvoiceController extends Controller
         return view('public.invoice', $vm + [
             'claims' => $claims,
             'openClaim' => $claims->firstWhere('status', 'reported'),
-            'zelleQr' => $qr,
             'agreement' => $agreement,
             'canReport' => $t->allows('report_payment') && $invoice->status === 'issued' && $invoice->balance_cents > 0,
             'reviewing' => (bool) $suppressed,

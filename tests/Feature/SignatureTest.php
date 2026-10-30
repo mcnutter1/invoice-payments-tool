@@ -114,6 +114,34 @@ class SignatureTest extends TestCase
         $this->assertSame('completed', $v->fresh()->status);
     }
 
+    public function test_contract_client_can_change_while_draft_and_signers_come_from_client_contacts(): void
+    {
+        $owner = $this->makeUser();
+        $biz = $this->makeBusiness($owner);
+        $a = $this->makeClient($biz, 'Alpha Co');
+        $b = $this->makeClient($biz, 'Beta Co');
+        \App\Models\Contact::create(['business_id' => $biz->id, 'client_id' => $b->id, 'name' => 'Bea Signer', 'email' => 'bea@beta.test', 'title' => 'CEO', 'is_signer' => true]);
+        \App\Models\Contact::create(['business_id' => $biz->id, 'client_id' => $b->id, 'name' => 'Not Signer', 'email' => 'ap@beta.test', 'is_signer' => false]);
+        $svc = app(ContractService::class);
+        $c = $svc->create($biz, ['client_id' => $a->id, 'title' => 'SOW', 'template_id' => $biz->contractTemplates()->value('id'), 'effective_date' => '2026-07-01',
+            'scope' => 'x', 'fees' => 'y', 'signing_order' => 'parallel', 'signers' => [['name' => 'Al', 'email' => 'al@alpha.test']]]);
+
+        $this->signIn($owner)->get("/b/{$biz->ulid}/contracts/{$c->id}/edit")->assertOk()->assertSee('Alpha Co')
+            ->assertSee('data-signer-pick', false)->assertSee('bea@beta.test')->assertDontSee('ap@beta.test');
+        $this->signIn($owner)->post("/b/{$biz->ulid}/contracts/{$c->id}", ['client_id' => $b->id, 'title' => 'SOW', 'template_id' => $biz->contractTemplates()->value('id'),
+            'effective_date' => '2026-07-01', 'scope' => 'x', 'fees' => 'y', 'signing_order' => 'parallel',
+            'signers' => [['name' => 'Bea Signer', 'email' => 'bea@beta.test', 'title' => 'CEO']]])->assertRedirect();
+        $c->refresh();
+        $this->assertSame($b->id, $c->client_id);
+        $this->assertStringContainsString('Beta Co', $c->currentVersion->snapshot['rendered']);
+        $this->assertSame('bea@beta.test', $c->currentVersion->recipients()->value('email'));
+
+        // Once sent, the client is locked.
+        $v = $svc->prepare($c->currentVersion);
+        $svc->send($v);
+        $this->assertNotNull($svc->clientChangeBlocker($c->fresh()));
+    }
+
     public function test_rich_text_body_is_sanitized_merged_safely_and_signable_with_drawn_signature(): void
     {
         $owner = $this->makeUser();

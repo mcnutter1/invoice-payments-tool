@@ -91,6 +91,7 @@ class ContractController extends Controller
             'milestones.*.due_date' => ['nullable', 'date'],
         ];
         if ($creating) $rules['client_id'] = ['required', Rule::exists('clients', 'id')->where('business_id', $b->id)];
+        else $rules['client_id'] = ['nullable', Rule::exists('clients', 'id')->where('business_id', $b->id)];
 
         $data = $request->validate($rules);
         if (! empty($data['countersigner_user_id'])) {
@@ -132,14 +133,23 @@ class ContractController extends Controller
         $v = $c->currentVersion;
         if (! $v || $v->isLocked()) return $this->to('/contracts/'.$id)->with('error', 'This version was sent and cannot be edited. Void it to create a new version.');
 
-        return view('contracts.form', $this->formData($c, $v->load('recipients')) + ['selectedClient' => $c->client_id]);
+        return view('contracts.form', $this->formData($c, $v->load('recipients')) + ['selectedClient' => $c->client_id, 'clientBlocker' => $this->service->clientChangeBlocker($c)]);
     }
 
     public function update(Request $request, int $id)
     {
         $c = $this->contract($id);
         $v = $c->currentVersion ?? throw new DomainException('No version.');
-        \Illuminate\Support\Facades\DB::transaction(fn () => $this->service->writeVersion($this->biz(), $c, $v, $this->validated($request, false)));
+        $data = $this->validated($request, false);
+        \Illuminate\Support\Facades\DB::transaction(function () use ($c, $v, $data) {
+            if (! empty($data['client_id']) && (int) $data['client_id'] !== (int) $c->client_id) {
+                if ($blocker = $this->service->clientChangeBlocker($c)) throw new DomainException('The client can’t be changed: '.$blocker);
+                $from = $c->client_id;
+                $c->update(['client_id' => (int) $data['client_id']]);
+                Audit::log($this->biz(), 'contract.client_changed', $c, ['client_id' => $from], ['client_id' => $c->client_id]);
+            }
+            $this->service->writeVersion($this->biz(), $c, $v, $data);
+        });
         Audit::log($this->biz(), 'contract.draft_updated', $v);
 
         return $this->to('/contracts/'.$id, 'Draft saved.');

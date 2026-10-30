@@ -68,6 +68,16 @@ class InvoicePresenter
         $business = $live ? self::businessSnapshot($invoice->business) : ($invoice->business_snapshot ?? []);
         $client = $live ? $invoice->client->snapshot() : ($invoice->client_snapshot ?? []);
         $instructions = $live ? self::instructionsSnapshot($invoice->business, $invoice->payment_methods ?? []) : ($invoice->instructions_snapshot ?? []);
+        $z = $instructions['zelle'] ?? null;
+        $b = $invoice->business;
+        // A QR added later is shown only if it belongs to the exact Zelle recipient frozen on the invoice.
+        if ($z && empty($z['qr_document_id']) && $b->zelle_qr_document_id
+            && ($z['recipient_name'] ?? null) === $b->zelle_recipient_name && ($z['email'] ?? null) === $b->zelle_email && ($z['phone'] ?? null) === $b->zelle_phone) {
+            $instructions['zelle']['qr_document_id'] = $b->zelle_qr_document_id;
+        }
+        $zelleQr = ! empty($instructions['zelle']['qr_document_id'])
+            ? $this->docs->dataUri(PrivateDocument::where('business_id', $invoice->business_id)->find($instructions['zelle']['qr_document_id']))
+            : null;
         $template = $live ? self::templateSnapshot($invoice->business) : ($invoice->template_snapshot ?? self::templateSnapshot($invoice->business));
         $logo = ! empty($business['logo_document_id'])
             ? $this->docs->dataUri(PrivateDocument::where('business_id', $invoice->business_id)->find($business['logo_document_id']))
@@ -79,6 +89,7 @@ class InvoicePresenter
             'business' => $business,
             'client' => $client,
             'instructions' => $instructions,
+            'zelleQr' => $zelleQr,
             'template' => $template,
             'logo' => $logo,
             'memo' => $memo,

@@ -26,6 +26,9 @@ class SettingsController extends Controller
             'fromHeader' => EmailComposer::fromHeader($b),
             'pendingSends' => EmailOutbox::where('business_id', $b->id)->where('status', 'queued')->count(),
             'canManage' => $this->ctx()->can('business.manage'),
+            'zelleQr' => $b->zelle_qr_document_id
+                ? app(DocumentStore::class)->dataUri(\App\Models\PrivateDocument::where('business_id', $b->id)->find($b->zelle_qr_document_id))
+                : null,
         ]);
     }
 

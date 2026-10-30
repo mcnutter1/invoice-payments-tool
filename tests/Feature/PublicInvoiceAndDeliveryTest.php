@@ -117,6 +117,37 @@ class PublicInvoiceAndDeliveryTest extends TestCase
         $this->assertTrue($row->needs_review);
     }
 
+    public function test_zelle_qr_shows_in_settings_and_on_invoices_for_the_same_zelle_account(): void
+    {
+        $owner = $this->makeUser();
+        $biz = $this->makeBusiness($owner);
+        $client = $this->makeClient($biz);
+        $payments = fn (array $extra = []) => $this->signIn($owner)->post("/b/{$biz->ulid}/settings/payments", array_merge([
+            'payment_methods' => ['zelle'], 'zelle_recipient_name' => 'Biz LLC', 'zelle_email' => 'pay@biz.test', 'confirm_change' => 1,
+        ], $extra));
+        $payments()->assertSessionHas('status');
+        $svc = app(InvoiceService::class);
+        $this->actingSystem($owner);
+        $inv = $svc->issue($svc->saveDraft($biz, null, ['client_id' => $client->id, 'payment_methods' => ['zelle'], 'lines' => [['name' => 'X', 'quantity' => '1', 'unit_price' => '50']]]));
+        $this->assertNull($inv->instructions_snapshot['zelle']['qr_document_id']);
+
+        $payments(['zelle_qr' => \Illuminate\Http\UploadedFile::fake()->image('qr.png', 200, 200)])->assertSessionHas('status');
+        $this->signIn($owner)->get("/b/{$biz->ulid}/settings")->assertOk()->assertSee('alt="Current Zelle QR code"', false);
+
+        $this->signIn($owner)->post("/b/{$biz->ulid}/invoices/{$inv->id}/send", ['recipients' => 'client@example.test']);
+        app(OutboxProcessor::class)->run(10, microtime(true) + 10);
+        $token = $this->linkFromLastEmail();
+        $this->flushSession();
+        $this->get('/i/'.$token);
+        $this->get('/i/v/'.$inv->ulid)->assertOk()->assertSee('Scan with your bank')->assertSee('src="data:image/png;base64,', false);
+
+        // A QR for a different Zelle recipient is never attached to an invoice issued with other details.
+        $payments(['zelle_email' => 'other@biz.test'])->assertSessionHas('status');
+        $this->flushSession();
+        $this->get('/i/'.$token);
+        $this->get('/i/v/'.$inv->ulid)->assertOk()->assertDontSee('Scan with your bank');
+    }
+
     public function test_voided_invoice_cancels_queued_sends(): void
     {
         [$owner, $biz, , $inv] = $this->issued();

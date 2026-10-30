@@ -209,12 +209,32 @@
     kind.addEventListener('change', sync); sync();
   }
 
-  // ---------- Contract form: prefill signer ----------
+  // ---------- Contract form: client signer contacts ----------
   const signerSrc = $('[data-signer-source]');
-  if (signerSrc) signerSrc.addEventListener('change', () => {
-    const o = signerSrc.selectedOptions[0]; const n = $('[data-signer-name-target]'); const m = $('[data-signer-email-target]');
-    if (n && !n.value) n.value = o?.dataset.signerName || ''; if (m && !m.value) m.value = o?.dataset.signerEmail || '';
-  });
+  const slots = $$('[data-signer-slot]');
+  const fillSlot = (slot, c) => ['name', 'email', 'title'].forEach((k) => { const i = $('[data-signer-field="' + k + '"]', slot); if (i) i.value = c ? (c[k] || '') : ''; });
+  slots.forEach((slot) => $('[data-signer-pick]', slot)?.addEventListener('change', (e) => {
+    const o = e.target.selectedOptions[0];
+    if (o && o.value !== '') fillSlot(slot, { name: o.dataset.name, email: o.dataset.email, title: o.dataset.title });
+  }));
+  if (signerSrc) {
+    let prev = signerSrc.value;
+    signerSrc.addEventListener('change', () => {
+      if (signerSrc.dataset.confirmChange && prev && !window.confirm(signerSrc.dataset.confirmChange)) { signerSrc.value = prev; return; }
+      const changed = prev !== '' && prev !== signerSrc.value; prev = signerSrc.value;
+      let contacts = [];
+      try { contacts = JSON.parse(signerSrc.selectedOptions[0]?.dataset.contacts || '[]'); } catch (_) { contacts = []; }
+      slots.forEach((slot, idx) => {
+        const pick = $('[data-signer-pick]', slot); if (!pick) return;
+        pick.replaceChildren(new Option(contacts.length ? 'Pick a signer contact…' : 'No signer contacts on this client', ''));
+        contacts.forEach((c, k) => { const o = new Option(c.name + ' — ' + c.email, String(k)); o.dataset.name = c.name; o.dataset.email = c.email; o.dataset.title = c.title || ''; pick.add(o); });
+        // A different client's signers must not carry over.
+        if (changed) fillSlot(slot, null);
+        const email = $('[data-signer-field="email"]', slot);
+        if (idx === 0 && contacts[0] && !email.value) { fillSlot(slot, contacts[0]); pick.value = '0'; }
+      });
+    });
+  }
 
   // ---------- Report range ----------
   const range = $('[data-range]');

@@ -118,6 +118,16 @@ class ContractService
         });
     }
 
+    /** Why a contract's client can no longer be changed, or null if it can. */
+    public function clientChangeBlocker(Contract $c): ?string
+    {
+        if ($c->versions()->whereNotIn('status', ['draft', 'prepared'])->exists()) return 'a version was already sent for signature. Create a new agreement instead.';
+        if ($c->invoices()->exists()) return 'invoices are linked to this agreement.';
+        if ($c->schedules()->exists()) return 'recurring billing is linked to this agreement.';
+
+        return null;
+    }
+
     public function writeVersion(Business $business, Contract $contract, ?ContractVersion $version, array $data, ?ContractVersion $amends = null): ContractVersion
     {
         $contract->fill([
