@@ -344,6 +344,8 @@
     const out = [];
     const c = el.style.color; if (c && /^(#[0-9a-f]{3,6}|rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\))$/i.test(c)) out.push('color: ' + c);
     const s = el.style.fontSize; if (s && /^(x-small|small|medium|large|x-large|xx-large|\d{1,2}(\.\d)?(px|pt)|\d(\.\d{1,3})?em)$/.test(s)) out.push('font-size: ' + s);
+    const w = el.style.fontWeight; if (/^(normal|bold|400|700)$/.test(w)) out.push('font-weight: ' + w);
+    const fs = el.style.fontStyle; if (/^(normal|italic)$/.test(fs)) out.push('font-style: ' + fs);
     return out.join('; ');
   };
   // Paste cleanup only; the server sanitizes again with a strict whitelist.
@@ -385,7 +387,12 @@
     ed.setAttribute('aria-label', src.getAttribute('aria-label') || $('label[for="' + src.id + '"]')?.textContent || 'Document text');
     ed.innerHTML = src.value.trim() ? cleanHtml(src.value) : '<p><br></p>';
     const required = src.required; src.required = false;
-    src.hidden = true; src.insertAdjacentElement('beforebegin', ed);
+    src.insertAdjacentElement('beforebegin', ed);
+    // Raw HTML stays available behind an "Advanced" toggle and syncs back into the editor.
+    const adv = document.createElement('details'); adv.className = 'rte-advanced';
+    const sum = document.createElement('summary'); sum.textContent = 'Advanced: edit HTML';
+    adv.append(sum); ed.insertAdjacentElement('afterend', adv); adv.append(src);
+    src.addEventListener('input', () => { ed.innerHTML = cleanHtml(src.value) || '<p><br></p>'; });
     if (!disabled) bar.hidden = false;
     const sync = () => { src.value = ed.textContent.trim() || ed.querySelector('hr,li') ? ed.innerHTML : ''; };
     let saved = null;

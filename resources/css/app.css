@@ -43,6 +43,9 @@
   .rte-select { @apply h-9 rounded border border-slate-300 bg-white px-2 text-sm text-slate-700; }
   .rte-sep { @apply mx-0.5 hidden h-6 w-px bg-slate-300 sm:inline-block; }
   .rte-swatch { @apply h-5 w-5 rounded-full border border-white ring-1 ring-slate-300 hover:ring-2 hover:ring-slate-500; }
+  .rte-advanced { @apply border-t border-slate-200; }
+  .rte-advanced > summary { @apply cursor-pointer select-none px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-800; }
+  .rte-advanced > textarea { @apply rounded-none border-0 border-t border-slate-200 shadow-none; }
   .rte-content { @apply min-h-[18rem] max-h-[70vh] overflow-y-auto px-4 py-3 text-base leading-relaxed text-slate-800 focus:outline-none sm:text-sm; }
   .field-error { @apply mt-1 text-xs font-medium text-red-700; }
   .tbl { @apply w-full text-sm; }

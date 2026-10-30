@@ -235,6 +235,8 @@ class SignatureTest extends TestCase
         $this->assertStringNotContainsString('url(', $out);
         $this->assertStringNotContainsString('expression', $out);
         $this->assertStringNotContainsString('99em', $out);
+        $this->assertStringContainsString('<strong>Bold <span style="font-weight: normal">plain</span></strong>',
+            \App\Support\RichText::sanitize('<p><strong>Bold <span style="font-weight: normal; position: fixed">plain</span></strong></p>'));
     }
 
     public function test_term_begin_and_open_ended_term_are_separate_from_effective_date(): void
