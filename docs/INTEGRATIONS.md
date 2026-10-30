@@ -17,11 +17,19 @@ Authorization: Bearer <NOTIFICATIONS_API_TOKEN>
 Content-Type: application/json
 
 {"channel":"email","to":"client@example.com","from":"Business Name <approved-sender@mcnutt.cloud>",
- "subject":"Invoice INV-000123 from Business Name","body":"…plain text with secure links…",
+ "subject":"Invoice INV-000123 from Business Name","body":"<!DOCTYPE html>…branded HTML with secure links…",
  "provider":"Twilio Email (SendGrid)"}
 ```
 
-Mapped fields: **only** `channel`, `to`, `from`, `subject`, `body`, optional `provider`. Not used because undocumented: `template_name`/`data`, HTML bodies, attachments, idempotency keys, delivery webhooks. The origin is fixed and allowlisted (`notifications.mcnutt.cloud`, https only); the path is hard-coded.
+Mapped fields: **only** `channel`, `to`, `from`, `subject`, `body`, optional `provider`. `body` carries a complete HTML document (owner confirmed the service auto-detects HTML in `body`); templates live in `resources/views/emails/message.blade.php` with inline styles. Not used: `template_name`/`data`, attachments, idempotency keys, delivery webhooks. The origin is fixed and allowlisted (`notifications.mcnutt.cloud`, https only); the path is hard-coded.
+
+### Open & click tracking (first-party)
+
+Each outbox row gets a random 256-bit tracking token (only its SHA-256 is stored).
+* **Opens:** a 1×1 image `GET /t/o/{token}.gif` sets `opened_at`/`open_count` and records `email_opened` (re-fetches within 10 min are counted but not re-listed). Approximate: Apple Mail Privacy Protection may preload images, other clients block them. Gmail's image proxy counts as a real open.
+* **Clicks:** email buttons append `?e={token}&a=view|pay|pdf|sign|agreement` to the existing secure link; the link exchange records `email_clicked` only when the tracking token belongs to the same business and document as the link.
+* **On-page:** `invoice_viewed`, `pdf_downloaded`, `remittance_downloaded`, `pay_clicked` (“Pay now” in the email or page), `payment_details_copied` (copy buttons, via a CSRF-protected POST), `payment_reported`.
+* All events appear in the invoice's Activity timeline and as the strongest signal in the invoice list. None of them change financial state.
 
 Response handling (`OutboxProcessor`):
 

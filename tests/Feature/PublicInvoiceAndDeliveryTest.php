@@ -30,7 +30,7 @@ class PublicInvoiceAndDeliveryTest extends TestCase
     private function linkFromLastEmail(): string
     {
         $m = end(LogNotificationGateway::$sent);
-        preg_match('#/i/([A-Za-z0-9_-]{40,64})#', $m->textBody, $x);
+        preg_match('#/i/([A-Za-z0-9_-]{40,64})#', $m->body, $x);
 
         return $x[1];
     }
@@ -46,7 +46,9 @@ class PublicInvoiceAndDeliveryTest extends TestCase
         $this->assertNull($row->encrypted_body); // raw link material purged after acceptance
         $this->assertSame('sent', $inv->fresh()->delivery_status);
         $mail = end(LogNotificationGateway::$sent);
-        $this->assertStringContainsString('Download PDF:', $mail->textBody);
+        $this->assertStringContainsString('<!DOCTYPE html>', $mail->body);
+        $this->assertStringContainsString('Download PDF', $mail->body);
+        $this->assertStringContainsString('/t/o/', $mail->body);
         $token = $this->linkFromLastEmail();
         $this->flushSession();
 
@@ -123,5 +125,71 @@ class PublicInvoiceAndDeliveryTest extends TestCase
         app(OutboxProcessor::class)->run(10, microtime(true) + 10);
         $this->assertSame('cancelled', EmailOutbox::first()->status);
         $this->assertCount(0, LogNotificationGateway::$sent);
+    }
+
+    public function test_email_open_click_pay_and_copy_are_tracked_as_activity(): void
+    {
+        [$owner, $biz, , $inv] = $this->issued();
+        $this->signIn($owner)->post("/b/{$biz->ulid}/invoices/{$inv->id}/send", ['recipients' => 'client@example.test']);
+        app(OutboxProcessor::class)->run(10, microtime(true) + 10);
+        $body = end(LogNotificationGateway::$sent)->body;
+        preg_match('#/t/o/([A-Za-z0-9_-]{43})\.gif#', $body, $px);
+        preg_match('#/i/([A-Za-z0-9_-]{43})\?e=([A-Za-z0-9_-]{43})&amp;a=pay#', $body, $pay);
+        $this->assertNotEmpty($px);
+        $this->assertNotEmpty($pay);
+        $this->flushSession();
+
+        $this->withHeader('User-Agent', 'Mozilla/5.0 (Macintosh)')->get('/t/o/'.$px[1].'.gif')->assertOk()->assertHeader('Content-Type', 'image/gif');
+        $this->get('/t/o/'.str_repeat('x', 43).'.gif')->assertOk(); // unknown token: same response, nothing recorded
+        $this->get('/i/'.$pay[1].'?e='.$pay[2].'&a=pay')->assertRedirect('/i/v/'.$inv->ulid.'#howtopay');
+        $this->get('/i/v/'.$inv->ulid)->assertOk()->assertSee('Pay now');
+        $this->get('/i/v/'.$inv->ulid.'/pay')->assertRedirect('/i/v/'.$inv->ulid.'#howtopay');
+        $this->postJson('/i/v/'.$inv->ulid.'/event', ['event' => 'payment_details_copied', 'detail' => 'memo'])->assertNoContent();
+        $this->postJson('/i/v/'.$inv->ulid.'/event', ['event' => 'invoice_paid'])->assertStatus(422);
+
+        $row = EmailOutbox::first();
+        $this->assertSame(1, $row->open_count);
+        $this->assertSame(1, $row->click_count);
+        $events = DocumentAccessEvent::where('invoice_id', $inv->id)->pluck('event')->all();
+        foreach (['email_opened', 'email_clicked', 'pay_clicked', 'invoice_viewed', 'payment_details_copied'] as $e) {
+            $this->assertContains($e, $events);
+        }
+        $this->assertSame(1, DocumentAccessEvent::where('event', 'email_opened')->count());
+        $this->assertSame(100000, $inv->fresh()->balance_cents);
+
+        $this->flushSession();
+        $this->signIn($owner)->get("/b/{$biz->ulid}/invoices/{$inv->id}")->assertOk()
+            ->assertSee('Opened the email')->assertSee('Clicked “Pay now” in the email')->assertSee('Copied payment details (memo)');
+        $this->signIn($owner)->get("/b/{$biz->ulid}/invoices")->assertOk()->assertSee('Clicked pay');
+    }
+
+    public function test_cancelled_invoices_are_hidden_by_default_and_purge_removes_everything(): void
+    {
+        [$owner, $biz, $client, $inv] = $this->issued();
+        $svc = app(InvoiceService::class);
+        $this->signIn($owner)->post("/b/{$biz->ulid}/invoices/{$inv->id}/send", ['recipients' => 'client@example.test']);
+        app(OutboxProcessor::class)->run(10, microtime(true) + 10);
+        $this->signIn($owner)->post("/b/{$biz->ulid}/invoices/{$inv->id}/void", ['reason' => 'Wrong client']);
+        $this->assertSame('Cancelled', $inv->fresh()->statusLabel());
+        $this->signIn($owner)->get("/b/{$biz->ulid}/invoices")->assertDontSee($inv->number);
+        $this->signIn($owner)->get("/b/{$biz->ulid}/invoices?show_cancelled=1")->assertSee($inv->number)->assertSee('line-through');
+
+        // Wrong confirmation is refused; correct confirmation purges invoice, ledger, links and emails.
+        $this->signIn($owner)->post("/b/{$biz->ulid}/invoices/{$inv->id}/purge", ['reason' => 'Test data', 'confirm' => 'nope'])->assertSessionHas('error');
+        $this->signIn($owner)->post("/b/{$biz->ulid}/invoices/{$inv->id}/purge", ['reason' => 'Test data', 'confirm' => $inv->number])->assertRedirect();
+        $this->assertNull(\App\Models\Invoice::find($inv->id));
+        $this->assertSame(0, JournalLine::where('invoice_id', $inv->id)->count());
+        $this->assertSame(0, \App\Models\JournalEntry::where('source_key', 'like', 'invoice:'.$inv->id.':%')->count());
+        $this->assertSame(0, EmailOutbox::where('invoice_id', $inv->id)->count());
+        $this->assertSame(0, \App\Models\PublicToken::where('invoice_id', $inv->id)->count());
+        $this->assertTrue(\App\Models\AuditEvent::where('action', 'invoice.purged')->exists());
+
+        // Invoices that ever had money applied can only be cancelled.
+        $paid = $svc->issue($svc->saveDraft($biz, null, ['client_id' => $client->id, 'lines' => [['name' => 'X', 'quantity' => '1', 'unit_price' => '100']]]));
+        $this->actingSystem($owner);
+        app(\App\Services\Payments\PaymentService::class)->record($biz, ['client_id' => $client->id, 'method' => 'zelle', 'amount_cents' => 10000, 'received_date' => now()->toDateString()], [$paid->id => 10000]);
+        $this->assertNotNull($svc->purgeBlocker($paid->fresh()));
+        $this->signIn($owner)->post("/b/{$biz->ulid}/invoices/{$paid->id}/purge", ['reason' => 'x', 'confirm' => $paid->number])->assertSessionHas('error');
+        $this->assertNotNull($paid->fresh());
     }
 }

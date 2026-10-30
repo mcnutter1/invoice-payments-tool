@@ -402,6 +402,74 @@ class InvoiceService
         });
     }
 
+    /** Why an issued/cancelled invoice cannot be permanently deleted, or null when it can. */
+    public function purgeBlocker(Invoice $invoice): ?string
+    {
+        if ($invoice->isDraft()) return null;
+        if (PaymentAllocation::where('invoice_id', $invoice->id)->exists()) {
+            return 'Payments or credits have been applied to this invoice (even if later reversed). Cancel it instead.';
+        }
+        if (CreditNote::where('invoice_id', $invoice->id)->exists()) {
+            return 'Credit notes or write-offs exist for this invoice. Cancel it instead.';
+        }
+        if (\App\Models\CashProjectionEvent::where('business_id', $invoice->business_id)->where('invoice_id', $invoice->id)->exists()) {
+            return 'Cash-basis activity exists for this invoice. Cancel it instead.';
+        }
+        $business = Business::findOrFail($invoice->business_id);
+        $closed = $business->books_closed_through;
+        if ($closed) {
+            $inClosed = \App\Models\JournalEntry::where('business_id', $business->id)
+                ->where(fn ($q) => $q->where('source_key', 'like', 'invoice:'.$invoice->id.':%'))
+                ->whereDate('entry_date', '<=', $closed)->exists();
+            if ($inClosed) return 'Its ledger entries fall in a closed period. Cancel it instead, or reopen the period.';
+        }
+
+        return null;
+    }
+
+    /**
+     * Permanently delete an issued or cancelled invoice that never had money or credits applied,
+     * including its ledger entries, PDFs, client links, emails and tracking. The audit log keeps a record.
+     */
+    public function purge(Invoice $invoice, string $reason): void
+    {
+        DB::transaction(function () use ($invoice, $reason) {
+            $invoice = Invoice::where('business_id', $invoice->business_id)->lockForUpdate()->findOrFail($invoice->id);
+            if ($invoice->isDraft()) {
+                $this->deleteDraft($invoice);
+
+                return;
+            }
+            if ($blocker = $this->purgeBlocker($invoice)) throw new DomainException($blocker);
+            $bid = $invoice->business_id;
+            $snapshot = ['number' => $invoice->number, 'status' => $invoice->status, 'total_cents' => $invoice->total_cents,
+                'client' => $invoice->client_snapshot['display_name'] ?? null, 'issue_date' => $invoice->issue_date?->toDateString()];
+
+            $entryIds = \App\Models\JournalEntry::where('business_id', $bid)->where('source_key', 'like', 'invoice:'.$invoice->id.':%')->pluck('id');
+            \App\Models\JournalLine::where('business_id', $bid)->whereIn('journal_entry_id', $entryIds)->delete();
+            \App\Models\JournalEntry::where('business_id', $bid)->whereIn('id', $entryIds)->orderByDesc('id')->delete();
+
+            $docIds = InvoiceDocumentVersion::where('invoice_id', $invoice->id)->pluck('document_id');
+            InvoiceDocumentVersion::where('invoice_id', $invoice->id)->delete();
+            $outboxIds = \App\Models\EmailOutbox::where('business_id', $bid)->where('invoice_id', $invoice->id)->pluck('id');
+            \App\Models\EmailAttempt::whereIn('email_outbox_id', $outboxIds)->delete();
+            \App\Models\EmailOutbox::whereIn('id', $outboxIds)->delete();
+            \App\Models\DocumentAccessEvent::where('business_id', $bid)->where('invoice_id', $invoice->id)->delete();
+            \App\Models\PublicToken::where('invoice_id', $invoice->id)->delete();
+            $claimDocs = \App\Models\PaymentClaim::where('invoice_id', $invoice->id)->whereNotNull('attachment_document_id')->pluck('attachment_document_id');
+            \App\Models\PaymentClaim::where('invoice_id', $invoice->id)->delete();
+            \App\Models\ScheduleRun::where('invoice_id', $invoice->id)->update(['invoice_id' => null, 'status' => 'skipped']);
+            \App\Models\ContractMilestone::where('business_id', $bid)->where('invoice_id', $invoice->id)->update(['status' => 'pending', 'invoice_id' => null]);
+            \App\Models\ExpenseLine::where('business_id', $bid)->where('billed_invoice_id', $invoice->id)->update(['billed_invoice_id' => null]);
+            Invoice::where('business_id', $bid)->where('replaces_invoice_id', $invoice->id)->update(['replaces_invoice_id' => null]);
+            $invoice->lines()->delete();
+            $invoice->taxLines()->delete();
+            $invoice->delete();
+            $this->docs->deleteMany($bid, $docIds->merge($claimDocs)->all());
+            Audit::log($bid, 'invoice.purged', $invoice, $snapshot, null, $reason);
+        });
+    }
+
     /**
      * Credit note or write-off against an issued invoice.
      *

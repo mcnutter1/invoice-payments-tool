@@ -70,7 +70,7 @@ class Invoice extends Model
     public function statusLabel(): string
     {
         if ($this->status === 'draft') return 'Draft';
-        if ($this->status === 'void') return 'Void';
+        if ($this->status === 'void') return 'Cancelled';
         return match ($this->settlement_status) {
             'paid' => 'Paid',
             'partial' => $this->isOverdue() ? 'Partially paid · overdue' : 'Partially paid',

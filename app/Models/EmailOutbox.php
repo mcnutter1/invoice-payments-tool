@@ -20,6 +20,9 @@ class EmailOutbox extends Model
         'available_at' => 'datetime',
         'accepted_at' => 'datetime',
         'purged_at' => 'datetime',
+        'opened_at' => 'datetime',
+        'last_opened_at' => 'datetime',
+        'clicked_at' => 'datetime',
         'needs_review' => 'boolean',
     ];
 

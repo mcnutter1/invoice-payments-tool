@@ -40,10 +40,10 @@
 @endif
 
 @if ($invoice->status === 'void')
-    <div class="alert alert-warn mt-4">Voided {{ $invoice->voided_at?->timezone($biz->timezone)->format('M j, Y') }}: {{ $invoice->void_reason }}. The issue entry was reversed; the number is never reused.</div>
+    <div class="alert alert-warn mt-4"><strong>Cancelled</strong> {{ $invoice->voided_at?->timezone($biz->timezone)->format('M j, Y') }}: {{ $invoice->void_reason }}. The ledger entry was reversed, client links were revoked and the number is never reused.</div>
 @endif
 
-<div class="mt-6 grid gap-4 xl:grid-cols-3">
+<div @class(['mt-6 grid gap-4 xl:grid-cols-3', 'opacity-70' => $invoice->status === 'void'])>
     <div class="space-y-4 xl:col-span-2">
         <div class="card overflow-x-auto">
             <table class="tbl">
@@ -102,7 +102,9 @@
                 @forelse ($outbox as $o)
                     <div class="flex flex-wrap items-center justify-between gap-2">
                         <span>{{ ucfirst($o->kind) }} to {{ $o->to_email }} · {{ $o->created_at->timezone($biz->timezone)->format('M j, g:ia') }}</span>
-                        <span>@include('partials.status', ['s' => $o->status])
+                        <span class="flex flex-wrap items-center gap-1">@include('partials.status', ['s' => $o->status])
+                            @if ($o->opened_at)<span class="chip chip-blue" title="First opened {{ $o->opened_at->timezone($biz->timezone)->format('M j, g:ia') }}">Opened{{ $o->open_count > 1 ? ' ×'.$o->open_count : '' }}</span>@endif
+                            @if ($o->clicked_at)<span class="chip chip-green" title="First click {{ $o->clicked_at->timezone($biz->timezone)->format('M j, g:ia') }}">Clicked{{ $o->click_count > 1 ? ' ×'.$o->click_count : '' }}</span>@endif
                             @if ($o->needs_review && $ctx->can('invoices.send') && $o->encrypted_body)
                                 <form method="post" action="{{ $bu }}/outbox/{{ $o->id }}/resend" class="inline" data-confirm="{{ $o->status === 'delivery_unknown' ? 'The mail service may already have accepted this message. Resend anyway?' : 'Re-queue this message?' }}">@csrf<button class="btn btn-sm">Resend after review</button></form>
                             @endif
@@ -112,18 +114,7 @@
                 @empty
                     <p class="text-slate-500">Not emailed yet.</p>
                 @endforelse
-                <p class="hint">“Accepted by mail service” means the notification service took the message; it is not proof of delivery. Delivery confirmations are not available from the current mail integration.</p>
-                @if ($access->isNotEmpty())
-                    <div class="border-t border-slate-100 pt-2">
-                        <div class="font-medium">Client activity</div>
-                        <ul class="mt-1 space-y-0.5 text-xs">
-                            @foreach ($access as $e)
-                                <li>{{ $e->created_at->timezone($biz->timezone)->format('M j, g:ia') }} · {{ ['link_accessed' => 'Link opened', 'invoice_viewed' => 'Invoice viewed', 'pdf_downloaded' => 'PDF downloaded', 'payment_reported' => 'Payment reported', 'contract_viewed' => 'Agreement opened'][$e->event] ?? $e->event }}
-                                    @if ($e->probable_automation)<span class="chip chip-gray">possibly automated (link scanner)</span>@endif</li>
-                            @endforeach
-                        </ul>
-                    </div>
-                @endif
+                <p class="hint">“Accepted by mail service” means the notification service took the message; it is not proof of delivery. “Opened” relies on images loading and is approximate (some mail apps preload images, others block them). Full client activity is in the Activity panel.</p>
             </div>
         </div>
         @endif
@@ -135,12 +126,29 @@
                 <form method="post" action="{{ $bu }}/invoices/{{ $invoice->id }}/write-off" data-confirm="Write off this amount as bad debt?">@csrf
                     <label class="label" for="wo">Write off</label><input class="input input-sm" id="wo" name="amount" type="number" step="0.01" min="0.01" max="{{ $invoice->balance_cents / 100 }}" value="{{ number_format($invoice->balance_cents / 100, 2, '.', '') }}">
                     <input class="input input-sm mt-1" name="reason" placeholder="Reason" required aria-label="Write-off reason"><button class="btn btn-sm mt-1">Write off</button></form>
-                <form method="post" action="{{ $bu }}/invoices/{{ $invoice->id }}/void" data-confirm="Void this invoice? The ledger entry is reversed and the number is retired.">@csrf
-                    <label class="label" for="vr">Void</label><input class="input input-sm" id="vr" name="reason" placeholder="Reason" required>
+                <form method="post" action="{{ $bu }}/invoices/{{ $invoice->id }}/void" data-confirm="Cancel this invoice? The ledger entry is reversed, client links stop working and the number is retired.">@csrf
+                    <label class="label" for="vr">Cancel invoice</label><input class="input input-sm" id="vr" name="reason" placeholder="Reason" required>
                     <label class="mt-1 flex items-center gap-2"><input class="check" type="checkbox" name="reissue" value="1" checked> Create replacement draft</label>
-                    <button class="btn btn-sm btn-danger mt-1">Void invoice</button>
+                    <button class="btn btn-sm btn-danger mt-1">Cancel invoice</button>
                     @if ($invoice->allocations->where('status', 'active')->isNotEmpty())<p class="hint">Unapply payments/credits first.</p>@endif
                 </form>
+            </div>
+        </div>
+        @endif
+
+        @if (! $invoice->isDraft() && $ctx->can('invoices.void'))
+        <div class="card border-red-200"><div class="card-head"><h2>Delete permanently</h2></div>
+            <div class="card-body text-sm">
+                @if ($purgeBlocker)
+                    <p class="text-slate-600">This invoice can’t be deleted: {{ $purgeBlocker }}</p>
+                @else
+                    <p class="text-slate-600">Removes the invoice, its ledger entries, PDFs, client links, emails and tracking as if it never existed. The number is not reused. Only a record in the audit log remains. This cannot be undone.</p>
+                    <form method="post" action="{{ $bu }}/invoices/{{ $invoice->id }}/purge" class="mt-3 grid gap-2 sm:grid-cols-3" data-confirm="Permanently delete invoice {{ $invoice->number }}? This cannot be undone.">@csrf
+                        <input class="input input-sm" name="reason" placeholder="Reason" required aria-label="Reason for deletion">
+                        <input class="input input-sm" name="confirm" placeholder="Type {{ $invoice->number }}" required aria-label="Type the invoice number to confirm" autocomplete="off">
+                        <button class="btn btn-sm btn-danger">Delete permanently</button>
+                    </form>
+                @endif
             </div>
         </div>
         @endif
@@ -165,9 +173,23 @@
             @foreach ($invoice->documentVersions as $v)<li><a href="{{ $bu }}/invoices/{{ $invoice->id }}/documents/{{ $v->version }}">Version {{ $v->version }}</a> · {{ $v->reason }} · <span class="font-mono text-xs text-slate-500" title="SHA-256">{{ substr($v->sha256, 0, 12) }}…</span></li>@endforeach
         </ul></div>
         @endif
-        <div class="card"><div class="card-head"><h2>Activity</h2></div><ul class="card-body space-y-1 text-xs">
-            @forelse ($activity as $a)<li>{{ $a->created_at->timezone($biz->timezone)->format('M j, g:ia') }} · {{ $a->action }} · {{ $a->actor?->label() ?? ucfirst($a->actor_type) }}@if($a->reason) — {{ $a->reason }}@endif</li>@empty<li class="text-slate-500">No activity.</li>@endforelse
-        </ul></div>
+        <div class="card"><div class="card-head"><h2>Activity</h2></div>
+            <ol class="card-body max-h-[36rem] space-y-2 overflow-y-auto text-xs">
+            @forelse ($timeline as $t)
+                <li class="flex gap-2">
+                    <span @class(['mt-1 h-2 w-2 flex-none rounded-full', 'bg-slate-400' => $t['kind'] === 'staff', 'bg-brand-600' => $t['kind'] === 'email', 'bg-emerald-500' => $t['kind'] === 'client' && empty($t['automated']), 'bg-slate-300' => $t['kind'] === 'client' && ! empty($t['automated'])]) aria-hidden="true"></span>
+                    <span @class(['text-slate-400' => ! empty($t['automated'])])>
+                        <span class="font-medium text-slate-800">{{ $t['label'] }}</span>
+                        @if (! empty($t['automated']))<span class="chip chip-gray">possibly automated</span>@endif
+                        <br><span class="text-slate-500">{{ $t['at']->timezone($biz->timezone)->format('M j, g:ia') }} · {{ $t['who'] }}</span>
+                        @if ($t['detail'])<br><span class="text-slate-500">{{ $t['detail'] }}</span>@endif
+                    </span>
+                </li>
+            @empty
+                <li class="text-slate-500">No activity.</li>
+            @endforelse
+            </ol>
+        </div>
     </aside>
 </div>
 @endsection

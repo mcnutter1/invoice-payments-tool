@@ -14,7 +14,7 @@
     <section class="grid gap-4 p-5 sm:grid-cols-3">
         <div class="sm:col-span-2">
             @if ($invoice->status === 'void')
-                <p class="alert alert-warn">This invoice was voided by {{ $business['name'] }} and is no longer payable.</p>
+                <p class="alert alert-warn">This invoice was cancelled by {{ $business['name'] }} and is no longer payable.</p>
             @elseif ($invoice->balance_cents <= 0)
                 <div class="text-sm text-slate-500">Status</div><div class="text-2xl font-semibold text-emerald-700">Paid in full</div>
                 <p class="text-sm text-slate-600">Thank you! No payment is due.</p>
@@ -37,6 +37,7 @@
         </div>
     </section>
     <div class="flex flex-wrap gap-2 px-5 pb-4">
+        @if ($invoice->status === 'issued' && $invoice->balance_cents > 0)<a class="btn btn-primary" href="/i/v/{{ $invoice->ulid }}/pay">Pay now</a>@endif
         <a class="btn" href="/i/v/{{ $invoice->ulid }}/pdf">Download PDF</a>
         @if (! empty($instructions['check']) && $invoice->balance_cents > 0)<a class="btn" href="/i/v/{{ $invoice->ulid }}/remittance">Remittance slip</a>@endif
         @if ($agreement)<a class="btn" href="/i/v/{{ $invoice->ulid }}/agreement">Signed agreement</a>@if($agreement->certificate_document_id)<a class="btn btn-ghost" href="/i/v/{{ $invoice->ulid }}/agreement/certificate">Signature certificate</a>@endif @endif
@@ -71,8 +72,9 @@
 </article>
 
 @if ($invoice->status === 'issued' && $invoice->balance_cents > 0)
-<section class="mt-6 space-y-4" aria-labelledby="howtopay">
-    <h2 id="howtopay">How to pay</h2>
+@php $track = '/i/v/'.$invoice->ulid.'/event'; @endphp
+<section class="mt-6 space-y-4" id="howtopay" aria-labelledby="howtopay-h">
+    <h2 id="howtopay-h">How to pay</h2>
     @if (! empty($instructions['zelle']))
         @php $z = $instructions['zelle']; @endphp
         <div class="card card-body">
@@ -81,10 +83,10 @@
             <dl class="mt-3 space-y-2 text-sm">
                 <div class="flex flex-wrap items-center justify-between gap-2"><dt class="text-slate-500">Send to</dt><dd class="font-medium">{{ $z['recipient_name'] }}</dd></div>
                 @foreach (array_filter(['Email' => $z['email'] ?? null, 'Mobile' => $z['phone'] ?? null]) as $k => $v)
-                    <div class="flex flex-wrap items-center justify-between gap-2"><dt class="text-slate-500">{{ $k }}</dt><dd><span class="font-mono">{{ $v }}</span> <button type="button" class="btn btn-sm" data-copy="{{ $v }}">Copy</button></dd></div>
+                    <div class="flex flex-wrap items-center justify-between gap-2"><dt class="text-slate-500">{{ $k }}</dt><dd><span class="font-mono">{{ $v }}</span> <button type="button" class="btn btn-sm" data-copy="{{ $v }}" data-track="zelle_{{ strtolower($k) }}" data-track-url="{{ $track }}">Copy</button></dd></div>
                 @endforeach
-                <div class="flex flex-wrap items-center justify-between gap-2"><dt class="text-slate-500">Amount</dt><dd><span class="font-mono">{{ number_format($invoice->balance_cents / 100, 2, '.', '') }}</span> <button type="button" class="btn btn-sm" data-copy="{{ number_format($invoice->balance_cents / 100, 2, '.', '') }}">Copy</button></dd></div>
-                <div class="flex flex-wrap items-center justify-between gap-2"><dt class="text-slate-500">Memo</dt><dd><span class="font-mono">{{ $memo }}</span> <button type="button" class="btn btn-sm" data-copy="{{ $memo }}">Copy</button></dd></div>
+                <div class="flex flex-wrap items-center justify-between gap-2"><dt class="text-slate-500">Amount</dt><dd><span class="font-mono">{{ number_format($invoice->balance_cents / 100, 2, '.', '') }}</span> <button type="button" class="btn btn-sm" data-copy="{{ number_format($invoice->balance_cents / 100, 2, '.', '') }}" data-track="amount" data-track-url="{{ $track }}">Copy</button></dd></div>
+                <div class="flex flex-wrap items-center justify-between gap-2"><dt class="text-slate-500">Memo</dt><dd><span class="font-mono">{{ $memo }}</span> <button type="button" class="btn btn-sm" data-copy="{{ $memo }}" data-track="memo" data-track-url="{{ $track }}">Copy</button></dd></div>
             </dl>
             @if ($zelleQr)<div class="mt-3"><p class="text-xs text-slate-500">Scan with your bank's Zelle app:</p><img src="{{ $zelleQr }}" alt="Zelle QR code provided by {{ $business['name'] }}'s bank" class="mt-1 h-40 w-40"></div>@endif
         </div>

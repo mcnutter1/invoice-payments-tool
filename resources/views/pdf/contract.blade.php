@@ -5,7 +5,13 @@
     footer { position: fixed; bottom: -48px; left: 0; right: 0; font-family: "DejaVu Sans", sans-serif; font-size: 7.5px; color: #6b7280; border-top: 1px solid #e5e7eb; padding-top: 5px; }
     footer .pg:after { content: "Page " counter(page); }
     h1 { font-size: 18px; margin: 0 0 10px; } h2 { font-size: 13px; margin: 16px 0 6px; } h3 { font-size: 11px; margin: 12px 0 4px; }
-    p { margin: 0 0 8px; } ul { margin: 0 0 8px 18px; padding: 0; }
+    p { margin: 0 0 8px; } ul, ol { margin: 0 0 8px 18px; padding: 0; } li { margin: 0 0 3px; } li ul, li ol { margin: 3px 0 0 16px; }
+    h4 { font-size: 10.5px; margin: 10px 0 4px; }
+    blockquote { margin: 0 0 8px; padding-left: 10px; border-left: 3px solid #d1d5db; color: #374151; }
+    hr { border: 0; border-top: 1px solid #d1d5db; margin: 12px 0; }
+    a { color: #111827; }
+    table.doc, .body table { border-collapse: collapse; width: 100%; margin: 0 0 8px; }
+    .body th, .body td { border: 1px solid #d1d5db; padding: 3px 5px; text-align: left; vertical-align: top; }
     .head { border-bottom: 3px solid {{ preg_match('/^#[0-9a-fA-F]{6}$/', (string) $accent) ? $accent : '#1f5f8b' }}; padding-bottom: 8px; margin-bottom: 14px; font-family: "DejaVu Sans", sans-serif; }
     .logo { max-height: 44px; max-width: 160px; }
     .sigs { margin-top: 24px; page-break-inside: avoid; font-family: "DejaVu Sans", sans-serif; }
@@ -21,7 +27,7 @@
     <td>@if ($logo)<img class="logo" src="{{ $logo }}" alt="">@else<strong>{{ $business->name() }}</strong>@endif</td>
     <td style="text-align:right; font-size: 9px;">{{ $contract->number }} · Version {{ $version->version }}</td>
 </tr></table></div>
-{!! $html !!}
+<div class="body">{!! $html !!}</div>
 <div class="sigs">
     <h2>Signatures</h2>
     @foreach (($signatures ?? null) ?: $recipients->map(fn ($r) => ['recipient' => $r, 'image' => null]) as $s)

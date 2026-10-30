@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Http;
 
 /**
  * McNutt Cloud notification service. Maps ONLY the documented fields: channel, to, from, subject, body, provider.
- * No attachments, HTML semantics, idempotency or delivery webhooks are assumed (docs/INTEGRATIONS.md).
+ * `body` carries HTML (the service auto-detects it). No attachments, idempotency or delivery webhooks are assumed.
  */
 class McNuttNotificationGateway implements NotificationGateway
 {
@@ -39,7 +39,7 @@ class McNuttNotificationGateway implements NotificationGateway
             'to' => $m->to,
             'from' => $m->from,
             'subject' => $m->subject,
-            'body' => $m->textBody,
+            'body' => $m->body,
         ];
         if (! empty($this->config['provider'])) {
             $payload['provider'] = $this->config['provider'];

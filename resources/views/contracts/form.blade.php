@@ -29,17 +29,20 @@
             <div><label class="label" for="cap_behavior">When invoicing exceeds the cap</label><select class="input" id="cap_behavior" name="cap_behavior"><option value="warn" @selected(($contract?->cap_behavior ?? 'warn') === 'warn')>Warn</option><option value="block" @selected($contract?->cap_behavior === 'block')>Block issuing</option></select></div>
         </div>
         <div class="card card-body space-y-4">
-            <div><label class="label" for="template_id">Template</label><select class="input" id="template_id" name="template_id">
-                <option value="">Use the text below</option>
-                @foreach ($templates as $t)<option value="{{ $t->id }}" @selected(old('template_id', $version?->template_id ?? (! $contract ? $templates->first()?->id : null)) == $t->id)>{{ $t->name }} (v{{ $t->version }})</option>@endforeach
-            </select><p class="hint">Choosing a template replaces the agreement text when saved. Leave blank to keep your edited text.</p></div>
+            @php
+                $selectedTpl = old('template_id', $version?->template_id ?? (! $contract ? $templates->first()?->id : null));
+                $bodyHtml = old('body', $version ? \App\Support\RichText::toHtml((string) $version->body) : \App\Support\RichText::toHtml((string) $templates->firstWhere('id', $selectedTpl)?->body));
+            @endphp
+            <div><label class="label" for="template_id">Start from template</label><select class="input" id="template_id" name="template_id" data-template-select>
+                <option value="">Blank — write your own</option>
+                @foreach ($templates as $t)<option value="{{ $t->id }}" data-body="{{ \App\Support\RichText::toHtml((string) $t->body) }}" @selected($selectedTpl == $t->id)>{{ $t->name }} (v{{ $t->version }})</option>@endforeach
+            </select><p class="hint">Choosing a template loads its text below. Edit freely — changes apply to this agreement only, never to the template.</p></div>
             <div><label class="label" for="scope">Scope of services <code class="text-xs">@{{agreement.scope}}</code></label><textarea class="input" id="scope" name="scope" rows="4">{{ old('scope', $input['scope'] ?? '') }}</textarea></div>
             <div><label class="label" for="fees">Fees <code class="text-xs">@{{agreement.fees}}</code></label><textarea class="input" id="fees" name="fees" rows="3">{{ old('fees', $input['fees'] ?? '') }}</textarea></div>
             <div><label class="label" for="recurring_fee">Recurring fee <code class="text-xs">@{{agreement.recurring_fee}}</code></label><input class="input" id="recurring_fee" name="recurring_fee" value="{{ old('recurring_fee', $input['recurring_fee'] ?? '') }}"></div>
-            @if ($version && ! $version->template_id)
-                <div><label class="label" for="body">Agreement text</label><textarea class="input font-mono text-xs" id="body" name="body" rows="16">{{ old('body', $version->body) }}</textarea>
-                    <p class="hint">Supports # headings, **bold** and - lists. Merge fields: {{ implode(', ', array_map(fn ($f) => str_repeat('{', 2).$f.str_repeat('}', 2), $fields)) }}</p></div>
-            @endif
+            <div><label class="label" for="body">Agreement text</label>
+                @include('partials.rich-editor', ['name' => 'body', 'id' => 'body', 'value' => $bodyHtml, 'fields' => $fields, 'label' => 'Agreement text'])
+                <p class="hint">Use “Insert field” for values filled in from the client, business and fields above (e.g. <code>@{{client.legal_name}}</code>). Fields are replaced when you save; missing values block sending.</p></div>
         </div>
         <div class="card overflow-x-auto"><div class="card-head"><h2>Billing milestones (optional)</h2></div>
             <table class="tbl"><thead><tr><th>Milestone</th><th class="w-40">Amount ($)</th><th class="w-44">Due</th></tr></thead><tbody>

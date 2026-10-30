@@ -5,6 +5,7 @@ These are the policies the software implements. They are management-accounting d
 ## Ledger
 * One canonical double-entry ledger per business. Every posting balances to the cent, references its source document and is unique per `(business, source_key)` — retries and double clicks cannot post twice.
 * Posted entries are never edited or deleted. Corrections are reversing/adjusting entries with actor and reason.
+* Exception — invoice purge (owner decision): an issued or cancelled invoice that **never** had payments, credits, write-offs or cash-basis activity, and whose entries are all in open periods, may be permanently deleted together with its issue/cancel entries. The audit log keeps the number, total, client, actor and reason. Everything else must be cancelled (voided), which keeps the invoice grayed out with a reversing entry.
 * Closed periods: no posting (including reversals) may be dated on or before `books_closed_through`. Reopening requires `books.reopen`, a reason, fresh sign-in, and is audited.
 * A/R and A/P are control accounts: they only change through invoices, credit notes, payments, bills and bill payments (manual journals to them are blocked).
 

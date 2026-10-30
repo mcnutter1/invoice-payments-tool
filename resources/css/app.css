@@ -24,9 +24,22 @@
   .card-head { @apply flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 sm:px-5; }
   .label { @apply mb-1 block text-sm font-medium text-slate-700; }
   .hint { @apply mt-1 text-xs text-slate-500; }
-  .input { @apply block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-600/30; }
+  .input { @apply block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-base shadow-sm placeholder:text-slate-400 focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-600/30 sm:text-sm; }
   .input-sm { @apply px-2 py-1; }
   .check { @apply h-4 w-4 rounded border-slate-300 text-brand-700; }
+  .check-lg { @apply h-5 w-5 flex-none rounded border-slate-300 text-brand-700; }
+  .sig-tab { @apply flex-1 cursor-pointer sm:flex-none; }
+  .sig-tab span { @apply block rounded px-5 py-2 text-center text-sm font-medium text-slate-600; }
+  .sig-tab input:checked + span { @apply bg-brand-700 text-white; }
+  .sig-tab input:focus-visible + span { @apply outline outline-2 outline-offset-2 outline-brand-600; }
+  .rte { @apply rounded-md border border-slate-300 bg-white focus-within:border-brand-600 focus-within:ring-2 focus-within:ring-brand-600/30; }
+  .rte > textarea { @apply border-0 shadow-none; }
+  .rte-toolbar { @apply sticky top-0 z-10 flex flex-wrap items-center gap-1 rounded-t-md border-b border-slate-200 bg-slate-50 p-1.5; }
+  .rte-btn { @apply inline-flex h-9 min-w-[2.25rem] items-center justify-center rounded px-2 text-sm text-slate-700 hover:bg-slate-200; }
+  .rte-btn[aria-pressed="true"] { @apply bg-brand-100 text-brand-800; }
+  .rte-select { @apply h-9 rounded border border-slate-300 bg-white px-2 text-sm text-slate-700; }
+  .rte-sep { @apply mx-0.5 hidden h-6 w-px bg-slate-300 sm:inline-block; }
+  .rte-content { @apply min-h-[18rem] max-h-[70vh] overflow-y-auto px-4 py-3 text-base leading-relaxed text-slate-800 focus:outline-none sm:text-sm; }
   .field-error { @apply mt-1 text-xs font-medium text-red-700; }
   .tbl { @apply w-full text-sm; }
   .tbl th { @apply border-b border-slate-200 bg-slate-50 px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500; }
@@ -63,5 +76,15 @@
   .prose-doc h3 { @apply mb-2 mt-3 text-sm font-semibold; }
   .prose-doc p { @apply mb-3 leading-relaxed; }
   .prose-doc ul { @apply mb-3 list-disc pl-6; }
+  .prose-doc ol { @apply mb-3 list-decimal pl-6; }
+  .prose-doc li { @apply mb-1; }
+  .prose-doc li > ul, .prose-doc li > ol { @apply mb-0 mt-1; }
+  .prose-doc h4 { @apply mb-1 mt-3 text-sm font-semibold; }
+  .prose-doc blockquote { @apply mb-3 border-l-4 border-slate-300 pl-3 text-slate-600; }
+  .prose-doc hr { @apply my-4 border-slate-300; }
+  .prose-doc a { @apply underline; }
+  .prose-doc table { @apply mb-3 border-collapse; }
+  .prose-doc th, .prose-doc td { @apply border border-slate-300 px-2 py-1 text-left align-top; }
+  .prose-doc > :first-child { @apply mt-0; }
   .sr-only-focusable:not(:focus) { @apply sr-only; }
 }

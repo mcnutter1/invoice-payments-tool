@@ -22,6 +22,7 @@ use App\Services\Notifications\EmailComposer;
 use App\Services\PublicAccess\PublicLinkService;
 use App\Support\Context;
 use App\Support\Money;
+use App\Support\RichText;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 
@@ -76,7 +77,8 @@ class ContractService
     public function render(string $template, array $data): array
     {
         $missing = [];
-        $body = preg_replace_callback('/\{\{\s*([a-z_.]+)\s*\}\}/', function ($m) use ($data, &$missing) {
+        $html = RichText::isHtml($template);
+        $body = preg_replace_callback('/\{\{\s*([a-z_.]+)\s*\}\}/', function ($m) use ($data, &$missing, $html) {
             $v = $data[$m[1]] ?? null;
             if ($v === null || $v === '') {
                 $missing[] = $m[1];
@@ -84,33 +86,15 @@ class ContractService
                 return '[[missing: '.$m[1].']]';
             }
 
-            return $v;
+            return $html ? nl2br(e($v), false) : $v;
         }, $template);
 
         return [$body, array_values(array_unique($missing))];
     }
 
-    /** Escape-first markdown subset → HTML (no raw HTML from users ever reaches the output). */
-    public static function toHtml(string $text): string
+    public static function toHtml(string $body): string
     {
-        $out = [];
-        $para = [];
-        $list = [];
-        $flushP = function () use (&$para, &$out) { if ($para) { $out[] = '<p>'.implode('<br>', $para).'</p>'; $para = []; } };
-        $flushL = function () use (&$list, &$out) { if ($list) { $out[] = '<ul>'.implode('', array_map(fn ($i) => "<li>$i</li>", $list)).'</ul>'; $list = []; } };
-        foreach (preg_split('/\r?\n/', $text) as $line) {
-            $e = e($line);
-            $e = preg_replace('/\*\*(.+?)\*\*/', '<strong>$1</strong>', $e);
-            if (trim($line) === '') { $flushP(); $flushL(); continue; }
-            if (preg_match('/^(#{1,3})\s+(.*)$/', $e, $m)) { $flushP(); $flushL(); $lvl = strlen($m[1]); $out[] = "<h$lvl>{$m[2]}</h$lvl>"; continue; }
-            if (preg_match('/^[-*]\s+(.*)$/', $e, $m)) { $flushP(); $list[] = $m[1]; continue; }
-            $flushL();
-            $para[] = $e;
-        }
-        $flushP();
-        $flushL();
-
-        return implode("\n", $out);
+        return RichText::toHtml($body);
     }
 
     public function create(Business $business, array $data): Contract
@@ -147,7 +131,7 @@ class ContractService
         ])->save();
         $client = Client::findOrFail($contract->client_id);
         $template = ! empty($data['template_id']) ? ContractTemplate::where('business_id', $business->id)->findOrFail($data['template_id']) : null;
-        $source = $data['body'] ?? $template?->body ?? '';
+        $source = RichText::normalize($data['body'] ?? null) ?: RichText::normalize($template?->body);
         $merge = $this->mergeData($business, $client, $contract, $data);
         [$body] = $this->render($source, $merge);
 

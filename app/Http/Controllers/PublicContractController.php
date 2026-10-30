@@ -36,6 +36,9 @@ class PublicContractController extends Controller
             'event' => 'link_accessed', 'probable_automation' => PublicLinkService::looksAutomated($request->userAgent()),
             'ip' => $request->ip(), 'user_agent' => mb_substr((string) $request->userAgent(), 0, 255),
         ]);
+        if ($request->query('e')) {
+            app(\App\Services\Notifications\EmailTracker::class)->recordClick($request->query('e'), $request->query('a'), $t, $request);
+        }
 
         return redirect('/c/r/'.$t->contract_recipient_id);
     }
@@ -148,6 +151,10 @@ class PublicContractController extends Controller
             'document_sha256' => ['required', 'string', 'size:64'],
         ]);
         $this->sig->sign($v, $r, $data + ['consent' => true, 'authority' => true]);
+        // Completion revokes signing links; hand this browser the signer's new view link so they land on their copy.
+        $view = PublicToken::where('business_id', $r->business_id)->where('purpose', 'contract_view')
+            ->where('contract_recipient_id', $r->id)->whereNull('revoked_at')->where('expires_at', '>', now())->latest('id')->first();
+        if ($view) $this->links->grant($request, $view);
 
         return redirect('/c/r/'.$r->id)->with('status', 'Thank you — your signature was recorded.');
     }

@@ -54,6 +54,7 @@ class AppServiceProvider extends ServiceProvider
         Blade::directive('money', fn ($expr) => "<?php echo e(\\App\\Support\\Money::format($expr)); ?>");
 
         RateLimiter::for('public', fn (Request $r) => Limit::perMinute(30)->by($r->ip()));
+        RateLimiter::for('tracking', fn (Request $r) => Limit::perMinute(240)->by($r->ip()));
         RateLimiter::for('public-token', fn (Request $r) => Limit::perMinute(20)->by($r->ip()));
         RateLimiter::for('public-write', fn (Request $r) => [Limit::perMinute(10)->by($r->ip()), Limit::perHour(60)->by($r->ip())]);
         RateLimiter::for('sensitive', fn (Request $r) => Limit::perMinute(20)->by(optional($r->session())->getId() ?? $r->ip()));

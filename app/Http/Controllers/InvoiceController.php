@@ -46,6 +46,8 @@ class InvoiceController extends Controller
             'unsent' => $q->where('status', 'issued')->whereIn('delivery_status', ['not_sent', 'failed', 'unknown']),
             default => null,
         };
+        $showCancelled = $status === 'void' || $request->boolean('show_cancelled');
+        if (! $showCancelled) $q->where('status', '!=', 'void');
         if ($cid = $request->query('client')) $q->where('client_id', (int) $cid);
         if ($s = trim((string) $request->query('q'))) {
             $like = '%'.str_replace(['%', '_'], ['\%', '\_'], $s).'%';
@@ -58,7 +60,35 @@ class InvoiceController extends Controller
         if (! in_array($col, ['id', 'issue_date', 'due_date', 'total_cents', 'balance_cents', 'number'], true)) $col = 'id';
         $q->orderBy($col, str_starts_with($sort, '-') ? 'desc' : 'asc');
 
-        return view('invoices.index', ['invoices' => $q->paginate(25)->withQueryString(), 'status' => $status, 'sort' => $sort]);
+        $invoices = $q->paginate(25)->withQueryString();
+
+        return view('invoices.index', [
+            'invoices' => $invoices,
+            'status' => $status,
+            'sort' => $sort,
+            'showCancelled' => $showCancelled,
+            'engagement' => $this->engagement($b->id, $invoices->pluck('id')->all()),
+        ]);
+    }
+
+    /** Strongest client signal per invoice (ignoring probable link scanners): reported > pay > viewed > opened. */
+    private function engagement(int $businessId, array $ids): array
+    {
+        if (! $ids) return [];
+        $rank = ['payment_reported' => 5, 'pay_clicked' => 4, 'payment_details_copied' => 4, 'invoice_viewed' => 3, 'pdf_downloaded' => 3, 'email_clicked' => 2, 'email_opened' => 1];
+        $labels = [5 => 'Payment reported', 4 => 'Clicked pay', 3 => 'Viewed', 2 => 'Clicked link', 1 => 'Opened email'];
+        $out = [];
+        $rows = \App\Models\DocumentAccessEvent::where('business_id', $businessId)->whereIn('invoice_id', $ids)
+            ->where('probable_automation', false)->whereIn('event', array_keys($rank))
+            ->selectRaw('invoice_id, event, max(created_at) as at')->groupBy('invoice_id', 'event')->get();
+        foreach ($rows as $r) {
+            $score = $rank[$r->event];
+            if (($out[$r->invoice_id]['score'] ?? 0) < $score) {
+                $out[$r->invoice_id] = ['score' => $score, 'label' => $labels[$score], 'at' => \Illuminate\Support\Carbon::parse($r->at)];
+            }
+        }
+
+        return $out;
     }
 
     private function editorData(?Invoice $invoice, ?int $clientId = null): array
@@ -166,15 +196,66 @@ class InvoiceController extends Controller
     public function show(int $id)
     {
         $invoice = $this->invoice($id)->load(['lines', 'taxLines', 'client', 'allocations.payment', 'allocations.creditNote', 'claims', 'documentVersions', 'contractVersion.contract', 'creditNotes']);
+        $outbox = EmailOutbox::where('business_id', $invoice->business_id)->where('invoice_id', $invoice->id)->latest('id')->get();
+        $access = \App\Models\DocumentAccessEvent::where('business_id', $invoice->business_id)->where('invoice_id', $invoice->id)->latest('id')->limit(200)->get();
+        $audit = \App\Models\AuditEvent::with('actor')->where('business_id', $invoice->business_id)->where('object_type', 'Invoice')->where('object_id', $invoice->id)->latest('id')->get();
 
         return view('invoices.show', [
             'invoice' => $invoice,
-            'outbox' => EmailOutbox::where('business_id', $invoice->business_id)->where('invoice_id', $invoice->id)->latest('id')->get(),
+            'outbox' => $outbox,
             'links' => PublicToken::where('invoice_id', $invoice->id)->latest('id')->get(),
-            'access' => \App\Models\DocumentAccessEvent::where('business_id', $invoice->business_id)->where('invoice_id', $invoice->id)->latest('id')->limit(30)->get(),
-            'activity' => \App\Models\AuditEvent::with('actor')->where('business_id', $invoice->business_id)->where('object_type', 'Invoice')->where('object_id', $invoice->id)->latest('id')->get(),
+            'access' => $access,
+            'timeline' => $this->timeline($audit, $outbox, $access),
+            'purgeBlocker' => $this->service->purgeBlocker($invoice),
             'incomeAccounts' => ChartAccount::where('business_id', $invoice->business_id)->where('type', 'income')->orderBy('code')->get(),
         ]);
+    }
+
+    /** Staff actions, email delivery and client activity merged newest-first. */
+    private function timeline($audit, $outbox, $access): array
+    {
+        $items = [];
+        foreach ($audit as $a) {
+            $items[] = ['at' => $a->created_at, 'kind' => 'staff', 'label' => self::AUDIT_LABELS[$a->action] ?? $a->action,
+                'who' => $a->actor?->label() ?? ucfirst((string) $a->actor_type), 'detail' => $a->reason];
+        }
+        foreach ($outbox as $o) {
+            if ($o->accepted_at) {
+                $items[] = ['at' => $o->accepted_at, 'kind' => 'email', 'label' => ($o->kind === 'reminder' ? 'Reminder' : 'Invoice email').' accepted by mail service', 'who' => $o->to_email, 'detail' => null];
+            } elseif (in_array($o->status, ['failed', 'delivery_unknown', 'cancelled'], true)) {
+                $items[] = ['at' => $o->updated_at, 'kind' => 'email', 'label' => 'Email '.str_replace('_', ' ', $o->status), 'who' => $o->to_email, 'detail' => $o->last_error];
+            }
+        }
+        $emails = $outbox->keyBy('id');
+        foreach ($access as $e) {
+            $items[] = ['at' => $e->created_at, 'kind' => 'client', 'label' => \App\Services\Notifications\EmailTracker::label($e),
+                'who' => $e->email_outbox_id ? ($emails[$e->email_outbox_id]->to_email ?? 'Client') : 'Client', 'detail' => null, 'automated' => $e->probable_automation];
+        }
+        usort($items, fn ($x, $y) => $y['at'] <=> $x['at']);
+
+        return $items;
+    }
+
+    private const AUDIT_LABELS = [
+        'invoice.draft_created' => 'Draft created',
+        'invoice.issued' => 'Invoice issued',
+        'invoice.send_queued' => 'Email queued',
+        'invoice.reminder_queued' => 'Reminder queued',
+        'invoice.voided' => 'Invoice cancelled',
+        'invoice.links_revoked' => 'Client links revoked',
+    ];
+
+    public function purge(Request $request, int $id)
+    {
+        $invoice = $this->invoice($id);
+        $data = $request->validate(['reason' => ['required', 'string', 'max:500'], 'confirm' => ['required', 'string']]);
+        if (trim($data['confirm']) !== $invoice->displayNumber()) {
+            throw new DomainException('Type the invoice number exactly to confirm permanent deletion.');
+        }
+        $number = $invoice->displayNumber();
+        $this->service->purge($invoice, $data['reason']);
+
+        return $this->to('/invoices', 'Invoice '.$number.' and its ledger entries were permanently deleted.');
     }
 
     public function issue(int $id)
@@ -281,10 +362,10 @@ class InvoiceController extends Controller
         if ($request->boolean('reissue')) {
             $new = $this->service->duplicateAsDraft($invoice);
 
-            return $this->to('/invoices/'.$new->id.'/edit', 'Invoice voided. Edit the replacement draft, then issue it with a new number.');
+            return $this->to('/invoices/'.$new->id.'/edit', 'Invoice cancelled. Edit the replacement draft, then issue it with a new number.');
         }
 
-        return $this->to('/invoices/'.$invoice->id, 'Invoice voided and its ledger entry reversed.');
+        return $this->to('/invoices/'.$invoice->id, 'Invoice cancelled and its ledger entry reversed.');
     }
 
     public function destroy(int $id)

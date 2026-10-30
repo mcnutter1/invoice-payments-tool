@@ -14,10 +14,18 @@ Route::middleware('throttle:auth')->group(function () {
     Route::post('/auth/dev-login', [C\AuthController::class, 'devLogin']);
 });
 
+// ---------- Email assets (open pixel, logo) ----------
+Route::middleware('throttle:tracking')->group(function () {
+    Route::get('/t/o/{token}.gif', [C\EmailAssetController::class, 'pixel'])->where('token', '[A-Za-z0-9_-]{20,64}');
+    Route::get('/brand/{ulid}/logo', [C\EmailAssetController::class, 'logo'])->where('ulid', '[0-9A-Za-z]{26}');
+});
+
 // ---------- Public client pages (no account) ----------
 Route::middleware(['public.doc', 'throttle:public'])->group(function () {
     Route::get('/i/{token}', [C\PublicInvoiceController::class, 'exchange'])->middleware('throttle:public-token')->where('token', '[A-Za-z0-9_-]{40,64}');
     Route::get('/i/v/{ulid}', [C\PublicInvoiceController::class, 'show']);
+    Route::get('/i/v/{ulid}/pay', [C\PublicInvoiceController::class, 'pay']);
+    Route::post('/i/v/{ulid}/event', [C\PublicInvoiceController::class, 'event'])->withoutMiddleware('throttle:public')->middleware('throttle:tracking');
     Route::get('/i/v/{ulid}/pdf', [C\PublicInvoiceController::class, 'pdf']);
     Route::get('/i/v/{ulid}/remittance', [C\PublicInvoiceController::class, 'remittance']);
     Route::get('/i/v/{ulid}/agreement', [C\PublicInvoiceController::class, 'agreement']);
@@ -66,6 +74,7 @@ Route::middleware('central')->group(function () {
             Route::post('/clients/{id}', [C\ClientController::class, 'update']);
             Route::post('/clients/{id}/archive', [C\ClientController::class, 'archive']);
             Route::post('/clients/{id}/contacts', [C\ClientController::class, 'addContact']);
+            Route::post('/clients/{id}/contacts/{contact}', [C\ClientController::class, 'updateContact'])->whereNumber('contact');
             Route::post('/clients/{id}/contacts/{contact}/delete', [C\ClientController::class, 'removeContact']);
         });
 
@@ -106,6 +115,7 @@ Route::middleware('central')->group(function () {
         });
         Route::middleware('perm:invoices.void')->group(function () {
             Route::post('/invoices/{id}/void', [C\InvoiceController::class, 'void']);
+            Route::post('/invoices/{id}/purge', [C\InvoiceController::class, 'purge'])->middleware('central:fresh');
             Route::get('/invoices/{id}/credit', [C\InvoiceController::class, 'creditForm']);
             Route::post('/invoices/{id}/credit', [C\InvoiceController::class, 'credit']);
             Route::post('/invoices/{id}/write-off', [C\InvoiceController::class, 'writeOff']);

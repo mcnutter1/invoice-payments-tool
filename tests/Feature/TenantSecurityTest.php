@@ -35,6 +35,33 @@ class TenantSecurityTest extends TestCase
         $this->assertSame(1, Invoice::count());
     }
 
+    public function test_client_contacts_can_be_edited_and_removed_within_tenant_only(): void
+    {
+        $owner = $this->makeUser('u_owner');
+        $a = $this->makeBusiness($owner, 'Alpha');
+        $b = $this->makeBusiness($owner, 'Beta');
+        $client = $this->makeClient($a, 'Alpha Client');
+        $base = "/b/{$a->ulid}/clients/{$client->id}/contacts";
+        $this->signIn($owner)->post($base, ['name' => 'Pat', 'email' => 'pat@example.test', 'is_primary_billing' => 1])->assertRedirect();
+        $this->signIn($owner)->post($base, ['name' => 'Sam', 'email' => 'sam@example.test'])->assertRedirect();
+        [$pat, $sam] = \App\Models\Contact::where('client_id', $client->id)->orderBy('id')->get()->all();
+
+        $this->signIn($owner)->post("$base/{$sam->id}", ['name' => 'Samantha', 'email' => 'samantha@example.test', 'phone' => '555-0100', 'title' => 'AP', 'is_primary_billing' => 1, 'is_signer' => 1])->assertRedirect();
+        $sam->refresh();
+        $this->assertSame(['Samantha', 'samantha@example.test', '555-0100', 'AP'], [$sam->name, $sam->email, $sam->phone, $sam->title]);
+        $this->assertTrue($sam->is_primary_billing && $sam->is_signer);
+        $this->assertFalse((bool) $pat->fresh()->is_primary_billing);
+        $this->signIn($owner)->get("/b/{$a->ulid}/clients/{$client->id}")->assertOk()->assertSee('Edit or remove')->assertSee('Samantha');
+
+        // Same ids through another business are not found.
+        $this->signIn($owner)->post("/b/{$b->ulid}/clients/{$client->id}/contacts/{$pat->id}", ['name' => 'Hacked'])->assertNotFound();
+        $this->signIn($owner)->post("/b/{$b->ulid}/clients/{$client->id}/contacts/{$pat->id}/delete")->assertNotFound();
+        $this->assertSame('Pat', $pat->fresh()->name);
+
+        $this->signIn($owner)->post("$base/{$pat->id}/delete")->assertRedirect();
+        $this->assertNull($pat->fresh());
+    }
+
     public function test_roles_enforced_server_side(): void
     {
         $owner = $this->makeUser('u_owner');

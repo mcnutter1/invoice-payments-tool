@@ -4,7 +4,7 @@ namespace App\Services\Notifications;
 
 use Illuminate\Support\Facades\Log;
 
-/** Development-only gateway. Refused when APP_ENV=production. Writes full messages to storage/logs/mail-dev.log. */
+/** Development-only gateway. Refused when APP_ENV=production. Writes each message to storage/logs/mail-dev/*.html. */
 class LogNotificationGateway implements NotificationGateway
 {
     public static array $sent = [];
@@ -18,8 +18,11 @@ class LogNotificationGateway implements NotificationGateway
     {
         self::$sent[] = $m;
         if (! app()->runningUnitTests()) {
-            Log::build(['driver' => 'single', 'path' => storage_path('logs/mail-dev.log')])
-                ->info("To: {$m->to}\nFrom: {$m->from}\nSubject: {$m->subject}\n\n{$m->textBody}\n");
+            $dir = storage_path('logs/mail-dev');
+            if (! is_dir($dir)) mkdir($dir, 0775, true);
+            $file = $dir.'/'.now()->format('Ymd-His').'-'.substr(md5($m->correlationId), 0, 8).'.html';
+            file_put_contents($file, "<!-- To: {$m->to} | From: {$m->from} | Subject: {$m->subject} -->\n".$m->body);
+            Log::info('mail-dev', ['to' => $m->to, 'subject' => $m->subject, 'file' => $file]);
         }
 
         return new SendResult('accepted', 200, 'dev-'.substr(md5($m->correlationId), 0, 12));
@@ -27,6 +30,6 @@ class LogNotificationGateway implements NotificationGateway
 
     public function health(): array
     {
-        return ['status' => 'healthy', 'message' => 'Development log transport — emails are written to storage/logs/mail-dev.log, not sent'];
+        return ['status' => 'healthy', 'message' => 'Development log transport — emails are written to storage/logs/mail-dev/, not sent'];
     }
 }

@@ -34,11 +34,24 @@
             <div class="card-head"><h2>Contacts</h2></div>
             <div class="card-body space-y-2 text-sm">
                 @forelse ($client->contacts as $ct)
-                    <div class="flex items-start justify-between gap-2">
-                        <div><div class="font-medium">{{ $ct->name }} @if($ct->title)<span class="text-slate-500">· {{ $ct->title }}</span>@endif</div>
-                            <div class="text-slate-500">{{ $ct->email }} {{ $ct->phone }}</div>
-                            <div>@if($ct->is_primary_billing)<span class="chip chip-blue">Billing</span>@endif @if($ct->is_signer)<span class="chip chip-violet">Signer</span>@endif</div></div>
-                        @if ($ctx->can('clients.manage'))<form method="post" action="{{ $bu }}/clients/{{ $client->id }}/contacts/{{ $ct->id }}/delete" data-confirm="Remove this contact?">@csrf<button class="btn btn-ghost btn-sm" aria-label="Remove {{ $ct->name }}">✕</button></form>@endif
+                    <div class="border-b border-slate-100 pb-2 last:border-0">
+                        <div class="flex items-start justify-between gap-2">
+                            <div><div class="font-medium">{{ $ct->name }} @if($ct->title)<span class="text-slate-500">· {{ $ct->title }}</span>@endif</div>
+                                <div class="text-slate-500">{{ $ct->email }} {{ $ct->phone }}</div>
+                                <div>@if($ct->is_primary_billing)<span class="chip chip-blue">Billing</span>@endif @if($ct->is_signer)<span class="chip chip-violet">Signer</span>@endif</div></div>
+                        </div>
+                        @if ($ctx->can('clients.manage'))
+                        <details class="mt-1" @if($errors->any() && old('contact_id') == $ct->id) open @endif>
+                            <summary class="cursor-pointer text-xs text-brand-700">Edit or remove</summary>
+                            <form method="post" action="{{ $bu }}/clients/{{ $client->id }}/contacts/{{ $ct->id }}" class="mt-2 space-y-2">
+                                @csrf
+                                <input type="hidden" name="contact_id" value="{{ $ct->id }}">
+                                @include('clients._contact-fields', ['ct' => $ct])
+                                <button class="btn btn-sm btn-primary">Save contact</button>
+                            </form>
+                            <form method="post" action="{{ $bu }}/clients/{{ $client->id }}/contacts/{{ $ct->id }}/delete" class="mt-2" data-confirm="Remove {{ $ct->name }} from this client?">@csrf<button class="btn btn-sm btn-danger">Remove contact</button></form>
+                        </details>
+                        @endif
                     </div>
                 @empty
                     <p class="text-slate-500">No contacts.</p>
@@ -47,11 +60,7 @@
                 <details class="mt-2"><summary class="cursor-pointer text-sm text-brand-700">+ Add contact</summary>
                     <form method="post" action="{{ $bu }}/clients/{{ $client->id }}/contacts" class="mt-2 space-y-2">
                         @csrf
-                        <input class="input" name="name" placeholder="Name" aria-label="Contact name" required>
-                        <input class="input" name="email" type="email" placeholder="Email" aria-label="Contact email">
-                        <input class="input" name="title" placeholder="Title" aria-label="Contact title">
-                        <label class="flex items-center gap-2"><input class="check" type="checkbox" name="is_primary_billing" value="1"> Primary billing contact</label>
-                        <label class="flex items-center gap-2"><input class="check" type="checkbox" name="is_signer" value="1"> Can sign contracts</label>
+                        @include('clients._contact-fields')
                         <button class="btn btn-sm btn-primary">Add</button>
                     </form>
                 </details>

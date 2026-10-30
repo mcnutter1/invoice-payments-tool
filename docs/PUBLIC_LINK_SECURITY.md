@@ -15,7 +15,7 @@
 * Signing link: only that recipient's page for that version. Invoice access can never sign; signing pages require the `contract_sign` purpose and a fresh email OTP.
 
 ## GET safety
-GET requests never sign, pay, consume one-time codes or change financial state. Link scanners (Safe Links, Proofpoint…) only create a `link_accessed` access event, flagged `probable_automation` by user-agent heuristics; staff see "possibly automated". Pixel tracking is not used (the mail body is plain text), so opens are not claimed.
+GET requests never sign, pay, consume one-time codes or change financial state. Link scanners (Safe Links, Proofpoint…) only create access events flagged `probable_automation` by user-agent heuristics; staff see "possibly automated". Emails include a first-party open pixel and tracked buttons (see INTEGRATIONS.md); tracking tokens are separate from access tokens, stored hashed, and an unknown pixel token gets the same response as a valid one.
 
 ## Headers & limits
 Public responses: `Cache-Control: no-store, private`, `Referrer-Policy: no-referrer`, `X-Robots-Tag: noindex, nofollow, noarchive`, CSP `default-src 'self'` with no external assets, `X-Frame-Options: DENY`. Rate limits: token exchange 20/min/IP, page views 30/min/IP, writes (payment reports, OTP, sign) 10/min and 60/h per IP; payment reports also capped at 5 per invoice per day. All POSTs are CSRF-protected. Uploads are MIME-sniffed (PDF/PNG/JPEG only), size-limited and stored privately.

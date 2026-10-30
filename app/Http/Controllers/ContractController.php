@@ -290,7 +290,7 @@ class ContractController extends Controller
     public function storeTemplate(Request $request)
     {
         $data = $request->validate(['name' => ['required', 'string', 'max:120'], 'body' => ['required', 'string', 'max:100000']]);
-        $this->validateFields($data['body']);
+        $data['body'] = $this->templateBody($data['body']);
         $t = ContractTemplate::create($data + ['business_id' => $this->biz()->id, 'created_by' => $this->ctx()->user->id]);
         Audit::log($this->biz(), 'contract_template.created', $t);
 
@@ -301,11 +301,19 @@ class ContractController extends Controller
     {
         $t = ContractTemplate::where('business_id', $this->biz()->id)->findOrFail($id);
         $data = $request->validate(['name' => ['required', 'string', 'max:120'], 'body' => ['required', 'string', 'max:100000'], 'active' => ['nullable', 'boolean']]);
-        $this->validateFields($data['body']);
-        $t->update(['name' => $data['name'], 'body' => $data['body'], 'active' => $request->boolean('active'), 'version' => $t->version + 1]);
+        $t->update(['name' => $data['name'], 'body' => $this->templateBody($data['body']), 'active' => $request->boolean('active'), 'version' => $t->version + 1]);
         Audit::log($this->biz(), 'contract_template.updated', $t);
 
         return back()->with('status', 'Template saved as version '.$t->version.'. Existing agreements are unchanged.');
+    }
+
+    private function templateBody(string $body): string
+    {
+        $html = \App\Support\RichText::normalize($body);
+        if ($html === '') throw new DomainException('The template text is empty.');
+        $this->validateFields($html);
+
+        return $html;
     }
 
     private function validateFields(string $body): void

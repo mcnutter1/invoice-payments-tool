@@ -29,7 +29,7 @@
     @else
         <p class="card-body text-sm">Open the PDF above to review the full document before signing.</p>
     @endif
-    <p class="border-t border-slate-100 px-5 py-2 font-mono text-[10px] text-slate-500">Document SHA-256: {{ $version->sha256 }}</p>
+    <p class="break-all border-t border-slate-100 px-5 py-2 font-mono text-[10px] text-slate-500">Document SHA-256: {{ $version->sha256 }}</p>
 </article>
 
 @if ($signing)

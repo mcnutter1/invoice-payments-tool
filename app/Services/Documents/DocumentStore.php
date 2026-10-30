@@ -76,6 +76,16 @@ class DocumentStore
         return 'data:'.$doc->mime.';base64,'.base64_encode($doc->contents());
     }
 
+    /** Delete tenant documents; files are removed only after the surrounding transaction commits. */
+    public function deleteMany(int $businessId, array $ids): void
+    {
+        foreach (PrivateDocument::where('business_id', $businessId)->whereIn('id', array_filter($ids))->get() as $doc) {
+            $path = $doc->absolutePath();
+            $doc->delete();
+            \Illuminate\Support\Facades\DB::afterCommit(fn () => is_file($path) && @unlink($path));
+        }
+    }
+
     public function download(PrivateDocument $doc, ?string $filename = null, bool $inline = false)
     {
         $name = self::safeName($filename ?? $doc->original_name);

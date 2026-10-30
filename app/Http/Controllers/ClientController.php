@@ -129,25 +129,48 @@ class ClientController extends Controller
         return $this->to('/clients/'.$id, $client->status === 'archived' ? 'Client archived. History is preserved.' : 'Client restored.');
     }
 
+    private function contactData(Request $request): array
+    {
+        return $request->validate([
+            'name' => ['required', 'string', 'max:120'], 'email' => ['nullable', 'email'], 'phone' => ['nullable', 'string', 'max:40'],
+            'title' => ['nullable', 'string', 'max:120'],
+        ]) + ['is_primary_billing' => $request->boolean('is_primary_billing'), 'is_signer' => $request->boolean('is_signer')];
+    }
+
     public function addContact(Request $request, int $id)
     {
         $client = $this->client($id);
-        $data = $request->validate([
-            'name' => ['required', 'string', 'max:120'], 'email' => ['nullable', 'email'], 'phone' => ['nullable', 'string', 'max:40'],
-            'title' => ['nullable', 'string', 'max:120'], 'is_primary_billing' => ['nullable', 'boolean'], 'is_signer' => ['nullable', 'boolean'],
-        ]);
-        if ($request->boolean('is_primary_billing')) {
+        $data = $this->contactData($request);
+        if ($data['is_primary_billing']) {
             Contact::where('client_id', $client->id)->update(['is_primary_billing' => false]);
         }
-        Contact::create($data + ['business_id' => $client->business_id, 'client_id' => $client->id, 'is_primary_billing' => $request->boolean('is_primary_billing'), 'is_signer' => $request->boolean('is_signer')]);
+        $contact = Contact::create($data + ['business_id' => $client->business_id, 'client_id' => $client->id]);
+        Audit::log($this->biz(), 'client.contact_added', $client, null, ['contact' => $contact->name]);
 
         return $this->to('/clients/'.$id, 'Contact added.');
+    }
+
+    public function updateContact(Request $request, int $id, int $contact)
+    {
+        $client = $this->client($id);
+        $ct = Contact::where('business_id', $client->business_id)->where('client_id', $client->id)->findOrFail($contact);
+        $data = $this->contactData($request);
+        if ($data['is_primary_billing']) {
+            Contact::where('client_id', $client->id)->whereKeyNot($ct->id)->update(['is_primary_billing' => false]);
+        }
+        $before = $ct->only(array_keys($data));
+        $ct->update($data);
+        Audit::log($this->biz(), 'client.contact_updated', $client, $before, $ct->only(array_keys($data)));
+
+        return $this->to('/clients/'.$id, 'Contact updated.');
     }
 
     public function removeContact(int $id, int $contact)
     {
         $client = $this->client($id);
-        Contact::where('business_id', $client->business_id)->where('client_id', $client->id)->whereKey($contact)->delete();
+        $ct = Contact::where('business_id', $client->business_id)->where('client_id', $client->id)->findOrFail($contact);
+        $ct->delete();
+        Audit::log($this->biz(), 'client.contact_removed', $client, ['contact' => $ct->name, 'email' => $ct->email]);
 
         return $this->to('/clients/'.$id, 'Contact removed.');
     }

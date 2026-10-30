@@ -41,6 +41,13 @@
   });
   $$('[data-copy]').forEach((b) => b.addEventListener('click', async () => {
     try { await navigator.clipboard.writeText(b.dataset.copy); const t = b.textContent; b.textContent = 'Copied'; setTimeout(() => { b.textContent = t; }, 1500); } catch (_) { /* clipboard unavailable */ }
+    if (b.dataset.trackUrl) {
+      const body = new FormData();
+      body.append('event', 'payment_details_copied');
+      body.append('detail', b.dataset.track || '');
+      body.append('_token', $('meta[name="csrf-token"]')?.content || '');
+      fetch(b.dataset.trackUrl, { method: 'POST', body, credentials: 'same-origin', headers: { Accept: 'application/json' } }).catch(() => {});
+    }
   }));
 
   // ---------- Repeating line tables ----------
@@ -213,25 +220,131 @@
   const range = $('[data-range]');
   if (range) { const sync = () => $$('[data-custom]').forEach((i) => { i.closest('div').hidden = range.value !== 'custom'; }); range.addEventListener('change', sync); sync(); }
 
+  // ---------- Rich text editor (contracts & templates) ----------
+  const RTE_TAGS = { P: 1, BR: 1, HR: 1, H1: 1, H2: 1, H3: 1, H4: 1, STRONG: 1, B: 1, EM: 1, I: 1, U: 1, S: 1, SUB: 1, SUP: 1, UL: 1, OL: 1, LI: 1, BLOCKQUOTE: 1, TABLE: 1, THEAD: 1, TBODY: 1, TR: 1, TH: 1, TD: 1, A: 1 };
+  const RTE_DROP = { SCRIPT: 1, STYLE: 1, IFRAME: 1, OBJECT: 1, EMBED: 1, META: 1, LINK: 1, TITLE: 1, HEAD: 1, IMG: 1, SVG: 1 };
+  // Paste cleanup only; the server sanitizes again with a strict whitelist.
+  const cleanHtml = (html) => {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const walk = (node) => {
+      Array.from(node.childNodes).forEach((n) => {
+        if (n.nodeType === 8) { n.remove(); return; }
+        if (n.nodeType !== 1) return;
+        if (RTE_DROP[n.tagName]) { n.remove(); return; }
+        walk(n);
+        if (!RTE_TAGS[n.tagName]) { n.replaceWith(...Array.from(n.childNodes)); return; }
+        Array.from(n.attributes).forEach((a) => {
+          const keep = (n.tagName === 'A' && a.name === 'href' && /^(https?:|mailto:)/i.test(a.value)) || ((n.tagName === 'TD' || n.tagName === 'TH') && /^(colspan|rowspan)$/.test(a.name));
+          if (!keep) n.removeAttribute(a.name);
+        });
+      });
+    };
+    walk(doc.body);
+    return doc.body.innerHTML;
+  };
+  $$('[data-rte]').forEach((wrap) => {
+    const src = $('[data-rte-source]', wrap); const bar = $('[data-rte-toolbar]', wrap);
+    if (!src || !bar || !document.execCommand) return;
+    const disabled = wrap.hasAttribute('data-rte-disabled');
+    const ed = document.createElement('div');
+    ed.className = 'rte-content prose-doc';
+    ed.contentEditable = disabled ? 'false' : 'true';
+    ed.setAttribute('role', 'textbox'); ed.setAttribute('aria-multiline', 'true');
+    ed.setAttribute('aria-label', src.getAttribute('aria-label') || $('label[for="' + src.id + '"]')?.textContent || 'Document text');
+    ed.innerHTML = src.value.trim() ? cleanHtml(src.value) : '<p><br></p>';
+    const required = src.required; src.required = false;
+    src.hidden = true; src.insertAdjacentElement('beforebegin', ed);
+    if (!disabled) bar.hidden = false;
+    const sync = () => { src.value = ed.textContent.trim() || ed.querySelector('hr,li') ? ed.innerHTML : ''; };
+    const exec = (cmd, val = null) => { ed.focus(); document.execCommand(cmd, false, val); sync(); refresh(); };
+    const refresh = () => {
+      $$('[data-cmd]', bar).forEach((b) => { try { b.setAttribute('aria-pressed', document.queryCommandState(b.dataset.cmd) ? 'true' : 'false'); } catch (_) { /* unsupported */ } });
+      const block = (document.queryCommandValue('formatBlock') || 'p').toLowerCase().replace(/[<>]/g, '');
+      const sel = $('[data-rte-block]', bar); if (sel) sel.value = ['h2', 'h3', 'blockquote'].includes(block) ? block : 'p';
+    };
+    try { document.execCommand('defaultParagraphSeparator', false, 'p'); document.execCommand('styleWithCSS', false, false); } catch (_) { /* older browsers */ }
+    // Keep the editor's selection when toolbar buttons are tapped.
+    bar.addEventListener('mousedown', (e) => { if (e.target.closest('button')) e.preventDefault(); });
+    bar.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-cmd]'); if (!b) return;
+      if (b.dataset.cmd === 'createLink') {
+        const url = window.prompt('Link address (https://…)', 'https://');
+        if (url && /^(https?:\/\/|mailto:)/i.test(url)) exec('createLink', url);
+        return;
+      }
+      exec(b.dataset.cmd);
+    });
+    $('[data-rte-block]', bar)?.addEventListener('change', (e) => exec('formatBlock', '<' + e.target.value + '>'));
+    $('[data-rte-field]', bar)?.addEventListener('change', (e) => { if (e.target.value) exec('insertText', '{{' + e.target.value + '}}'); e.target.value = ''; });
+    ed.addEventListener('input', sync);
+    ed.addEventListener('keyup', refresh); ed.addEventListener('mouseup', refresh);
+    document.addEventListener('selectionchange', () => { if (document.activeElement === ed) refresh(); });
+    ed.addEventListener('paste', (e) => {
+      const cd = e.clipboardData; if (!cd) return;
+      e.preventDefault();
+      const html = cd.getData('text/html');
+      if (html) document.execCommand('insertHTML', false, cleanHtml(html));
+      else document.execCommand('insertText', false, cd.getData('text/plain'));
+      sync();
+    });
+    ed.addEventListener('drop', (e) => e.preventDefault());
+    src.form?.addEventListener('submit', (e) => {
+      sync();
+      if (required && !src.value) { e.preventDefault(); alert('Please enter the document text.'); ed.focus(); }
+    }, true);
+    wrap.rte = { set: (html) => { ed.innerHTML = cleanHtml(html) || '<p><br></p>'; sync(); }, isEmpty: () => !ed.textContent.trim() };
+  });
+  // Choosing a template loads its text into the agreement editor.
+  const tplSel = $('[data-template-select]');
+  if (tplSel) tplSel.addEventListener('change', () => {
+    const body = tplSel.selectedOptions[0]?.dataset.body; const wrap = $('[data-rte]', tplSel.form);
+    if (!body || !wrap?.rte) return;
+    if (!wrap.rte.isEmpty() && !window.confirm('Replace the agreement text with this template?')) return;
+    wrap.rte.set(body);
+  });
+
   // ---------- Signature ----------
   $$('[data-sign-form]').forEach((form) => {
     const typed = $('[data-typed-name]', form); const preview = $('[data-sig-preview]', form);
     typed?.addEventListener('input', () => { preview.textContent = typed.value; });
     const canvas = $('[data-sig-canvas]', form); const data = $('[data-sig-data]', form);
-    const ctx = canvas.getContext('2d'); let drawing = false; let drawn = false;
-    ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.strokeStyle = '#111827';
-    const pos = (e) => { const r = canvas.getBoundingClientRect(); return [(e.clientX - r.left) * canvas.width / r.width, (e.clientY - r.top) * canvas.height / r.height]; };
-    canvas.addEventListener('pointerdown', (e) => { drawing = true; canvas.setPointerCapture(e.pointerId); ctx.beginPath(); ctx.moveTo(...pos(e)); });
-    canvas.addEventListener('pointermove', (e) => { if (!drawing) return; ctx.lineTo(...pos(e)); ctx.stroke(); drawn = true; });
-    ['pointerup', 'pointercancel'].forEach((ev) => canvas.addEventListener(ev, () => { drawing = false; }));
-    $('[data-sig-clear]', form).addEventListener('click', () => { ctx.clearRect(0, 0, canvas.width, canvas.height); drawn = false; data.value = ''; });
+    const ctx = canvas.getContext('2d'); let drawing = false; let drawn = false; let last = null;
+    // Size the backing store to the displayed size (crisp on high-DPI phones); only while empty so rotation never loses a signature.
+    const fit = () => {
+      const r = canvas.getBoundingClientRect(); if (!r.width || drawn) return;
+      const dpr = Math.min(window.devicePixelRatio || 1, 3);
+      canvas.width = Math.round(r.width * dpr); canvas.height = Math.round(r.height * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.lineWidth = 2.6; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111827'; ctx.fillStyle = '#111827';
+    };
+    const pos = (e) => { const r = canvas.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+    canvas.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); fit(); drawing = true; canvas.setPointerCapture(e.pointerId);
+      last = pos(e); ctx.beginPath(); ctx.arc(last[0], last[1], ctx.lineWidth / 2, 0, Math.PI * 2); ctx.fill(); drawn = true;
+    });
+    canvas.addEventListener('pointermove', (e) => {
+      if (!drawing) return; e.preventDefault();
+      const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+      events.forEach((ev) => {
+        const p = pos(ev); const mid = [(last[0] + p[0]) / 2, (last[1] + p[1]) / 2];
+        ctx.beginPath(); ctx.moveTo(last[0], last[1]); ctx.quadraticCurveTo(last[0], last[1], mid[0], mid[1]); ctx.lineTo(p[0], p[1]); ctx.stroke();
+        last = p;
+      });
+    });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach((ev) => canvas.addEventListener(ev, () => { drawing = false; }));
+    const clear = () => { drawn = false; ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.restore(); data.value = ''; fit(); };
+    $('[data-sig-clear]', form).addEventListener('click', clear);
+    window.addEventListener('resize', fit);
     const kinds = $$('[data-sig-kind]', form);
-    const sync = () => { const draw = kinds.find((k) => k.checked)?.value === 'draw'; $('[data-sig-draw]', form).hidden = !draw; $('[data-sig-type]', form).hidden = draw; };
+    const sync = () => { const draw = kinds.find((k) => k.checked)?.value === 'draw'; $('[data-sig-draw]', form).hidden = !draw; $('[data-sig-type]', form).hidden = draw; if (draw) requestAnimationFrame(fit); };
     kinds.forEach((k) => k.addEventListener('change', sync)); sync();
     form.addEventListener('submit', (e) => {
       if (kinds.find((k) => k.checked)?.value === 'draw') {
-        if (!drawn) { e.preventDefault(); alert('Please draw your signature or switch to a typed signature.'); return; }
-        data.value = canvas.toDataURL('image/png');
+        if (!drawn) { e.preventDefault(); e.stopImmediatePropagation(); alert('Please draw your signature or switch to a typed signature.'); return; }
+        // Export at a fixed size so the PNG stays small regardless of screen density.
+        const out = document.createElement('canvas'); out.width = 600; out.height = Math.max(120, Math.round(600 * canvas.height / canvas.width));
+        out.getContext('2d').drawImage(canvas, 0, 0, out.width, out.height);
+        data.value = out.toDataURL('image/png');
       }
     }, true);
   });

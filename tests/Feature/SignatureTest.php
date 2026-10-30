@@ -32,7 +32,7 @@ class SignatureTest extends TestCase
     private function lastBodyMatching(string $re): ?string
     {
         foreach (array_reverse(LogNotificationGateway::$sent) as $m) {
-            if (preg_match($re, $m->textBody, $x)) return $x[1];
+            if (preg_match($re, $m->body, $x)) return $x[1];
         }
 
         return null;
@@ -52,7 +52,7 @@ class SignatureTest extends TestCase
 
         $this->post('/c/r/'.$r->id.'/code')->assertSessionHas('status');
         app(OutboxProcessor::class)->run(20, microtime(true) + 10);
-        $code = $this->lastBodyMatching('/\b(\d{6})\b/');
+        $code = $this->lastBodyMatching('/>\s*(\d{6})\s*</');
         $this->post('/c/r/'.$r->id.'/verify', ['code' => '000000' === $code ? '111111' : '000000'])->assertSessionHas('error');
         $this->post('/c/r/'.$r->id.'/verify', ['code' => $code])->assertSessionHas('status');
 
@@ -112,5 +112,60 @@ class SignatureTest extends TestCase
             'typed_name' => 'Owner Person', 'consent' => 1, 'authority' => 1, 'signature_kind' => 'type', 'document_sha256' => $v->sha256,
         ])->assertRedirect();
         $this->assertSame('completed', $v->fresh()->status);
+    }
+
+    public function test_rich_text_body_is_sanitized_merged_safely_and_signable_with_drawn_signature(): void
+    {
+        $owner = $this->makeUser();
+        $biz = $this->makeBusiness($owner);
+        $client = $this->makeClient($biz, 'Acme <b>Evil</b> & Co');
+        $body = '<h2>Services</h2><p onclick="x()">Between <strong>{{business.legal_name}}</strong> and {{client.name}}.</p>'
+            .'<script>alert(1)</script><ol><li>First</li><li>Second</li></ol><p><a href="javascript:alert(1)">bad</a> <a href="https://example.com">good</a></p>'
+            .'<img src="https://tracker.example/x.png"><p style="color:red">{{agreement.scope}}</p>';
+        $svc = app(ContractService::class);
+        $c = $svc->create($biz, ['client_id' => $client->id, 'title' => 'Rich', 'body' => $body, 'scope' => "Line one\nLine two",
+            'signing_order' => 'parallel', 'signers' => [['name' => 'Pat Signer', 'email' => 'pat@example.test']]]);
+        $v = $c->currentVersion;
+        $this->assertStringNotContainsString('<script', $v->body);
+        $this->assertStringNotContainsString('onclick', $v->body);
+        $this->assertStringNotContainsString('javascript:', $v->body);
+        $this->assertStringNotContainsString('<img', $v->body);
+        $this->assertStringNotContainsString('style=', $v->body);
+        $rendered = $v->snapshot['rendered'];
+        $this->assertStringContainsString('<strong>', $rendered);
+        $this->assertStringContainsString('Acme &lt;b&gt;Evil&lt;/b&gt; &amp; Co', $rendered);
+        $this->assertStringContainsString('Line one<br>', $rendered);
+
+        // Templates are stored sanitized; unknown merge fields are rejected.
+        $this->signIn($owner)->post("/b/{$biz->ulid}/contract-templates", ['name' => 'Rich T', 'body' => '<p>Hi {{client.name}}</p><script>x</script>'])->assertSessionHas('status');
+        $this->assertSame('<p>Hi {{client.name}}</p>', \App\Models\ContractTemplate::where('name', 'Rich T')->value('body'));
+        $this->signIn($owner)->post("/b/{$biz->ulid}/contract-templates", ['name' => 'Bad', 'body' => '<p>{{client.ssn}}</p>'])->assertSessionHas('error');
+        $this->signIn($owner)->get("/b/{$biz->ulid}/contracts/{$c->id}/edit")->assertOk()->assertSee('data-rte', false);
+        $this->signIn($owner)->get("/b/{$biz->ulid}/contract-templates")->assertOk()->assertSee('data-rte', false);
+
+        $v = $svc->prepare($v);
+        $svc->send($v);
+        app(OutboxProcessor::class)->run(20, microtime(true) + 10);
+        $token = $this->lastBodyMatching('#/c/([A-Za-z0-9_-]{40,64})#');
+        $r = ContractRecipient::where('contract_version_id', $v->id)->first();
+        $this->flushSession();
+        $this->get('/c/'.$token)->assertRedirect('/c/r/'.$r->id);
+        $this->get('/c/r/'.$r->id)->assertOk()->assertSee('<ol><li>First</li>', false)->assertDontSee('<script>alert', false);
+        $this->post('/c/r/'.$r->id.'/code');
+        app(OutboxProcessor::class)->run(20, microtime(true) + 10);
+        $this->post('/c/r/'.$r->id.'/verify', ['code' => $this->lastBodyMatching('/>\s*(\d{6})\s*</')]);
+        $this->get('/c/r/'.$r->id)->assertOk()->assertSee('data-sig-canvas', false);
+
+        // A drawn signature as produced by the mobile signature pad (PNG data URL).
+        $img = imagecreatetruecolor(600, 300);
+        imagefill($img, 0, 0, imagecolorallocate($img, 255, 255, 255));
+        imageline($img, 20, 200, 580, 120, imagecolorallocate($img, 17, 24, 39));
+        ob_start(); imagepng($img); $png = ob_get_clean();
+        $this->post('/c/r/'.$r->id.'/sign', ['typed_name' => 'Pat Signer', 'consent' => 1, 'authority' => 1, 'signature_kind' => 'draw',
+            'signature_data' => 'data:image/png;base64,'.base64_encode($png), 'document_sha256' => $v->sha256])->assertRedirect();
+        $this->assertSame('draw', $r->fresh()->signature_kind);
+        $this->assertSame('completed', $v->fresh()->status);
+        // The signer lands on their completed copy instead of a dead link.
+        $this->get('/c/r/'.$r->id)->assertOk()->assertSee('fully signed');
     }
 }

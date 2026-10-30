@@ -1,6 +1,8 @@
 # Electronic signature evidence
 
 ## Lifecycle
+Agreement and template text is rich text (headings, bold/italic/underline, lists, quotes, links, tables) edited in a built-in editor and stored as HTML sanitized server-side with a strict whitelist (`App\Support\RichText`: no scripts, styles, images, iframes or event handlers; links limited to https/http/mailto). Merge-field values are HTML-escaped when inserted. Older plain-text bodies (# headings, **bold**, - lists) still render and convert to rich text when edited.
+
 draft → prepared (merge fields validated, PDF rendered, SHA-256 recorded, version locked) → sent → partially_signed → completed; or declined / expired / voided. Changes after sending require voiding and a new version; amendments are new versions referencing the signed original (`amends_version_id`) and never alter it or past invoices. Owners may upload an externally signed PDF with written provenance; it is labeled "externally signed" and no in-app signature trail is fabricated.
 
 ## Signer verification & ceremony

@@ -14,6 +14,7 @@ use App\Services\Audit;
 use App\Services\Documents\DocumentStore;
 use App\Services\Documents\PdfRenderer;
 use App\Services\Invoicing\InvoicePresenter;
+use App\Services\Notifications\EmailTracker;
 use App\Services\PublicAccess\PublicLinkService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -28,7 +29,7 @@ class PublicInvoiceController extends Controller
         return response()->view('public.not-available', [], 404);
     }
 
-    private function log(PublicToken $t, string $event, Request $request, ?int $versionId = null): void
+    private function log(PublicToken $t, string $event, Request $request, ?int $versionId = null, ?string $detail = null): void
     {
         DocumentAccessEvent::create([
             'business_id' => $t->business_id,
@@ -36,6 +37,7 @@ class PublicInvoiceController extends Controller
             'invoice_id' => $t->invoice_id,
             'contract_version_id' => $versionId,
             'event' => $event,
+            'detail' => $detail,
             'probable_automation' => PublicLinkService::looksAutomated($request->userAgent()),
             'ip' => $request->ip(),
             'user_agent' => mb_substr((string) $request->userAgent(), 0, 255),
@@ -49,10 +51,18 @@ class PublicInvoiceController extends Controller
         if (! $t || ! $t->invoice_id) return $this->notFound();
         $this->links->grant($request, $t);
         $this->log($t, 'link_accessed', $request);
+        $action = $request->query('d') === 'pdf' ? 'pdf' : $request->query('a');
+        if ($request->query('e')) {
+            app(EmailTracker::class)->recordClick($request->query('e'), $action, $t, $request);
+        }
         $invoice = Invoice::findOrFail($t->invoice_id);
-        $dest = '/i/v/'.$invoice->ulid.($request->query('d') === 'pdf' ? '/pdf' : '');
+        if ($action === 'pay') {
+            $this->log($t, 'pay_clicked', $request, null, 'email');
 
-        return redirect($dest);
+            return redirect('/i/v/'.$invoice->ulid.'#howtopay');
+        }
+
+        return redirect('/i/v/'.$invoice->ulid.($action === 'pdf' ? '/pdf' : ''));
     }
 
     private function resolve(Request $request, string $ulid): array
@@ -91,6 +101,30 @@ class PublicInvoiceController extends Controller
         ]);
     }
 
+    /** "Pay now" on the invoice page: tracked, then jumps to the payment instructions. */
+    public function pay(Request $request, string $ulid)
+    {
+        [$invoice, $t] = $this->resolve($request, $ulid);
+        if (! $invoice) return $this->notFound();
+        $this->log($t, 'pay_clicked', $request, null, 'page');
+
+        return redirect('/i/v/'.$invoice->ulid.'#howtopay');
+    }
+
+    /** Lightweight client-side signals (e.g. copying Zelle details). Never changes financial state. */
+    public function event(Request $request, string $ulid)
+    {
+        [$invoice, $t] = $this->resolve($request, $ulid);
+        if (! $invoice) return response()->noContent(404);
+        $data = $request->validate([
+            'event' => ['required', Rule::in(['payment_details_copied'])],
+            'detail' => ['nullable', Rule::in(['zelle_email', 'zelle_mobile', 'amount', 'memo'])],
+        ]);
+        $this->log($t, $data['event'], $request, null, $data['detail'] ?? null);
+
+        return response()->noContent();
+    }
+
     public function pdf(Request $request, string $ulid, DocumentStore $docs)
     {
         [$invoice, $t] = $this->resolve($request, $ulid);
@@ -106,6 +140,7 @@ class PublicInvoiceController extends Controller
     {
         [$invoice, $t] = $this->resolve($request, $ulid);
         if (! $invoice || empty($invoice->instructions_snapshot['check'])) return $this->notFound();
+        $this->log($t, 'remittance_downloaded', $request);
 
         return response($pdf->render('pdf.remittance', $presenter->viewModel($invoice)), 200, [
             'Content-Type' => 'application/pdf',

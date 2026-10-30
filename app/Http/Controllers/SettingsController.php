@@ -162,7 +162,7 @@ class SettingsController extends Controller
     public function testEmail(Request $request, EmailComposer $composer)
     {
         $to = $request->validate(['to' => ['required', 'email']])['to'];
-        $composer->queue($this->biz(), 'test', $to, 'Test email from '.$this->biz()->name(), "This is a test message from McNutt Finance for {$this->biz()->name()}.\n\nIf you received it, email delivery is configured.");
+        $composer->queueTest($this->biz(), $to);
 
         return back()->with('status', 'Test email queued. Check the automation monitor for the result.');
     }
