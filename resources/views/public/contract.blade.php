@@ -32,7 +32,8 @@
 @endif
 
 @if ($signing)
-<ol class="mb-4 flex items-center gap-2 text-xs font-medium sm:text-sm" aria-label="Signing steps">
+<div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+<ol class="flex items-center gap-2 text-xs font-medium sm:text-sm" aria-label="Signing steps">
     @foreach ($steps as $i => [$label, $done])
         @php $current = ! $done && ($i === 0 || $steps[$i - 1][1]); @endphp
         <li class="flex items-center gap-2">
@@ -42,15 +43,17 @@
         </li>
     @endforeach
 </ol>
+<a class="btn btn-sm" href="#sign">Go to signature ↓</a>
+</div>
 @endif
 
-@component('contracts._sheet', ['business' => $business, 'contract' => $contract, 'version' => $version, 'html' => $html, 'logo' => $logo, 'accent' => $accent, 'scroll' => $signing])
+@component('contracts._sheet', ['business' => $business, 'contract' => $contract, 'version' => $version, 'html' => $html, 'logo' => $logo, 'accent' => $accent])
     @slot('actions')@if ($version->rendered_document_id)<a class="btn btn-sm" href="/c/r/{{ $recipient->id }}/document">PDF</a>@endif @endslot
     @slot('foot')<span class="break-all font-mono">SHA-256 {{ $version->sha256 }}</span><a href="/c/r/{{ $recipient->id }}/consent">E-sign consent (copy)</a>@endslot
 @endcomponent
 
 @if ($signing)
-<section class="mx-auto mt-6 max-w-3xl space-y-4">
+<section id="sign" class="mx-auto mt-6 max-w-3xl scroll-mt-4 space-y-4">
     @if (! $readyToSign)
         <div class="card card-body">
             <h2>Verify your email</h2>
