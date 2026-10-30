@@ -95,6 +95,7 @@ Route::middleware('central')->group(function () {
             Route::get('/invoices', [C\InvoiceController::class, 'index']);
             Route::get('/invoices/{id}', [C\InvoiceController::class, 'show'])->whereNumber('id');
             Route::get('/invoices/{id}/pdf', [C\InvoiceController::class, 'pdf'])->whereNumber('id');
+            Route::get('/invoices/{id}/preview', [C\InvoiceController::class, 'preview'])->whereNumber('id');
             Route::get('/invoices/{id}/documents/{version}', [C\InvoiceController::class, 'documentVersion'])->whereNumber('id');
         });
         Route::middleware('perm:invoices.manage')->group(function () {

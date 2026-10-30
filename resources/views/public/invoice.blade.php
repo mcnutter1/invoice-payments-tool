@@ -2,9 +2,10 @@
 @section('title', 'Invoice '.$invoice->number.' from '.($business['name'] ?? ''))
 @section('content')
 @php
+    $preview = $preview ?? false;
     $M = fn ($c) => \App\Support\Money::format((int) $c);
-    $memo = 'Invoice '.$invoice->number;
-    $payable = $invoice->status === 'issued' && $invoice->balance_cents > 0;
+    $memo = $invoice->number ? 'Invoice '.$invoice->number : 'Invoice number';
+    $payable = ($invoice->status === 'issued' || ($preview && $invoice->isDraft())) && $invoice->balance_cents > 0;
     [$statusLabel, $statusClass] = match (true) {
         $invoice->status === 'void' => ['Cancelled', 'chip-gray'],
         $invoice->balance_cents <= 0 => ['Paid', 'chip-green'],
@@ -14,6 +15,13 @@
     };
     $amountValue = number_format($invoice->balance_cents / 100, 2, '.', '');
 @endphp
+
+@if ($preview)
+<div class="alert alert-info mb-4 flex flex-wrap items-center justify-between gap-2">
+    <span>Preview — this is what {{ $invoice->client?->display_name ?? 'the client' }} sees{{ $invoice->isDraft() ? '. Dates and the invoice number are filled in when you issue it.' : '.' }}</span>
+    <span class="flex gap-2"><a class="btn btn-sm" href="{{ $pdfUrl }}" target="_blank" rel="noopener">PDF</a><a class="btn btn-sm" href="{{ $backUrl }}">Back to invoice</a></span>
+</div>
+@endif
 
 <article class="card overflow-hidden">
     <header class="flex flex-wrap items-center justify-between gap-4 px-5 py-4 sm:px-6">
@@ -26,7 +34,7 @@
         </div>
         <div class="text-right">
             <div class="text-xs uppercase tracking-wide text-slate-500">Invoice</div>
-            <div class="font-mono text-base font-semibold text-slate-900">{{ $invoice->number }}</div>
+            <div class="font-mono text-base font-semibold text-slate-900">{{ $invoice->number ?? 'DRAFT' }}</div>
         </div>
     </header>
 
@@ -47,10 +55,10 @@
                 @endif
             </div>
             <div class="flex flex-col gap-2 sm:items-end">
-                @if ($payable)<a class="btn btn-primary btn-lg w-full sm:w-auto" href="/i/v/{{ $invoice->ulid }}/pay">Pay now</a>@endif
+                @if ($payable)<a class="btn btn-primary btn-lg w-full sm:w-auto" href="{{ $preview ? '#howtopay' : '/i/v/'.$invoice->ulid.'/pay' }}">Pay now</a>@endif
                 <div class="grid grid-cols-2 gap-2 sm:flex">
-                    <a class="btn" href="/i/v/{{ $invoice->ulid }}/pdf">Download PDF</a>
-                    @if (! empty($instructions['check']) && $payable)<a class="btn" href="/i/v/{{ $invoice->ulid }}/remittance">Remittance slip</a>@endif
+                    <a class="btn" href="{{ $preview ? $pdfUrl : '/i/v/'.$invoice->ulid.'/pdf' }}" @if($preview) target="_blank" rel="noopener" @endif>Download PDF</a>
+                    @if (! empty($instructions['check']) && $payable && ! $preview)<a class="btn" href="/i/v/{{ $invoice->ulid }}/remittance">Remittance slip</a>@endif
                 </div>
             </div>
         </div>
@@ -125,7 +133,7 @@
 </article>
 
 @if ($payable)
-@php $track = '/i/v/'.$invoice->ulid.'/event'; @endphp
+@php $track = $preview ? '' : '/i/v/'.$invoice->ulid.'/event'; @endphp
 <section class="mt-8 scroll-mt-4 space-y-4" id="howtopay" aria-labelledby="howtopay-h">
     <div>
         <h2 id="howtopay-h" class="text-xl">How to pay</h2>
@@ -162,7 +170,7 @@
                     <div><dt class="text-slate-500">Mail to</dt><dd class="whitespace-pre-line">{{ $c['address'] }}</dd></div>
                     <div><dt class="text-slate-500">Memo</dt><dd class="font-mono">{{ $memo }}</dd></div>
                 </dl>
-                <a class="btn btn-sm mt-4 self-start" href="/i/v/{{ $invoice->ulid }}/remittance">Print remittance slip</a>
+                @unless ($preview)<a class="btn btn-sm mt-4 self-start" href="/i/v/{{ $invoice->ulid }}/remittance">Print remittance slip</a>@endunless
             </div>
         @endif
     </div>

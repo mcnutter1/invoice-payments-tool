@@ -14,6 +14,7 @@
     <h1>{{ $invoice ? 'Edit draft invoice' : 'New invoice' }}</h1>
     @if ($invoice)
         <div class="flex gap-2">
+            <a class="btn" href="{{ $bu }}/invoices/{{ $invoice->id }}/preview" target="_blank" rel="noopener">Preview invoice</a>
             <a class="btn" href="{{ $bu }}/invoices/{{ $invoice->id }}/pdf" target="_blank" rel="noopener">Preview PDF</a>
             <a class="btn" href="{{ $bu }}/invoices/{{ $invoice->id }}">Review &amp; issue →</a>
         </div>
@@ -115,9 +116,11 @@
                 <button class="btn btn-primary" name="next" value="review">Save &amp; review</button>
                 <button class="btn" name="next" value="stay">Save draft</button>
                 @if ($invoice)
+                    <a class="btn btn-ghost" href="{{ $bu }}/invoices/{{ $invoice->id }}/preview" target="_blank" rel="noopener">Preview invoice</a>
                     <a class="btn btn-ghost" href="{{ $bu }}/invoices/{{ $invoice->id }}/pdf" target="_blank" rel="noopener">Open PDF preview</a>
                 @endif
             </div>
+            @if ($invoice)<p class="text-xs text-slate-500">Previews show the last saved version.</p>@endif
             <p class="text-xs text-slate-500" data-dirty-note hidden>Unsaved changes.</p>
         </div>
     </aside>

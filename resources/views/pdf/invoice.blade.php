@@ -31,6 +31,9 @@
     .section { margin-top: 16px; page-break-inside: avoid; }
     .section h3 { font-size: 10px; text-transform: uppercase; letter-spacing: .6px; margin: 0 0 4px; color: {{ $accent }}; }
     .box { border: 1px solid #e2e8f0; padding: 8px 10px; }
+    .pay td.paybox { vertical-align: top; border: 1px solid #e2e8f0; border-top: 2px solid {{ $accent }}; background: #f8fafc; padding: 8px 10px; }
+    .paytitle { font-weight: bold; font-size: 10.5px; margin-bottom: 4px; }
+    .kv td { padding: 1px 0; vertical-align: top; } .kv td.k { color: #64748b; width: 62px; }
     .terms { page-break-inside: auto; } .terms p { margin: 0 0 4px; }
     .watermark { position: fixed; top: 280px; left: 60px; font-size: 110px; color: rgba(148,163,184,0.25); transform: rotate(-30deg); }
     .logo { max-height: 56px; max-width: 180px; }
@@ -119,27 +122,42 @@
 </table>
 
 @if (! empty($instructions['zelle']) || ! empty($instructions['check']))
+@php
+    $both = ! empty($instructions['zelle']) && ! empty($instructions['check']);
+    $memoText = $memo ?? 'Invoice number';
+@endphp
 <div class="section">
     <h3>How to pay</h3>
-    <table><tr>
+    <table class="pay"><tr>
         @if (! empty($instructions['zelle']))
-            <td style="vertical-align: top; width: 50%; padding-right: 8px;"><div class="box">
-                <div style="font-weight:bold;">Zelle</div>
-                <div>Send to: {{ $instructions['zelle']['recipient_name'] }}</div>
-                @if (! empty($instructions['zelle']['email']))<div>{{ $instructions['zelle']['email'] }}</div>@endif
-                @if (! empty($instructions['zelle']['phone']))<div>{{ $instructions['zelle']['phone'] }}</div>@endif
-                <div>Memo: {{ $memo ?? 'invoice number' }}</div>
-                @if (! empty($zelleQr))<div style="text-align: center; margin: 6px 0 2px;"><img src="{{ $zelleQr }}" alt="" style="width: 84px; height: 84px;"></div>@endif
-                <div class="muted" style="font-size:8px;">Use your bank's app. We never ask for your bank login.</div>
-            </div></td>
+            @php $z = $instructions['zelle']; @endphp
+            <td class="paybox" style="width: {{ $both ? '49%' : '100%' }};">
+                <table><tr>
+                    <td style="vertical-align: top;">
+                        <div class="paytitle">Zelle</div>
+                        <table class="kv">
+                            @if (! empty($z['recipient_name']))<tr><td class="k">Recipient</td><td>{{ $z['recipient_name'] }}</td></tr>@endif
+                            @if (! empty($z['email']))<tr><td class="k">Email</td><td>{{ $z['email'] }}</td></tr>@endif
+                            @if (! empty($z['phone']))<tr><td class="k">Phone</td><td>{{ $z['phone'] }}</td></tr>@endif
+                            <tr><td class="k">Memo</td><td style="font-weight: bold;">{{ $memoText }}</td></tr>
+                        </table>
+                        <div class="muted" style="font-size: 7.5px; margin-top: 6px;">Send from your bank’s app. We never ask for your bank login.</div>
+                    </td>
+                    @if (! empty($zelleQr))<td style="vertical-align: top; width: 78px; text-align: right;"><img src="{{ $zelleQr }}" alt="" style="width: 72px; height: 72px;"><div class="muted" style="font-size: 7px; text-align: center;">Scan to pay</div></td>@endif
+                </tr></table>
+            </td>
         @endif
+        @if ($both)<td style="width: 2%;"></td>@endif
         @if (! empty($instructions['check']))
-            <td style="vertical-align: top;"><div class="box">
-                <div style="font-weight:bold;">Check</div>
-                <div>Payable to: {{ $instructions['check']['payee'] }}</div>
-                <div style="white-space: pre-line;">{{ $instructions['check']['address'] }}</div>
-                <div>Memo: {{ $memo ?? 'invoice number' }}</div>
-            </div></td>
+            @php $ck = $instructions['check']; @endphp
+            <td class="paybox" style="width: {{ $both ? '49%' : '100%' }};">
+                <div class="paytitle">Check</div>
+                <table class="kv">
+                    <tr><td class="k">Payable to</td><td>{{ $ck['payee'] }}</td></tr>
+                    <tr><td class="k">Mail to</td><td style="white-space: pre-line;">{{ $ck['address'] }}</td></tr>
+                    <tr><td class="k">Memo</td><td style="font-weight: bold;">{{ $memoText }}</td></tr>
+                </table>
+            </td>
         @endif
     </tr></table>
 </div>

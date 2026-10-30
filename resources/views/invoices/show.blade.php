@@ -11,6 +11,7 @@
         </p>
     </div>
     <div class="flex flex-wrap gap-2">
+        <a class="btn" href="{{ $bu }}/invoices/{{ $invoice->id }}/preview" target="_blank" rel="noopener">Preview invoice</a>
         @if ($invoice->isDraft())
             @if ($ctx->can('invoices.manage'))<a class="btn" href="{{ $bu }}/invoices/{{ $invoice->id }}/edit">Edit</a>@endif
             <a class="btn" href="{{ $bu }}/invoices/{{ $invoice->id }}/pdf" target="_blank" rel="noopener">Preview PDF</a>

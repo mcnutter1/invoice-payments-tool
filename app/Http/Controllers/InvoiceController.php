@@ -288,6 +288,26 @@ class InvoiceController extends Controller
         return $docs->download($v->document, $invoice->number.'.pdf', $request->boolean('inline'));
     }
 
+    /** The client-facing invoice page, rendered for staff without a link or PDF. Never saved. */
+    public function preview(int $id, InvoicePresenter $presenter)
+    {
+        $invoice = $this->invoice($id)->load(['client.contacts', 'contractVersion.contract']);
+        if ($invoice->isDraft()) {
+            $b = $this->biz();
+            $invoice->issue_date ??= $b->localToday();
+            $invoice->due_date ??= $invoice->issue_date->copy()->addDays((int) ($invoice->client->default_terms_days ?? $b->default_terms_days));
+            $invoice->balance_cents = $invoice->total_cents;
+        }
+
+        return view('public.invoice', $presenter->viewModel($invoice) + [
+            'preview' => true,
+            'pdfUrl' => '/b/'.$this->biz()->ulid.'/invoices/'.$invoice->id.'/pdf?inline=1',
+            'backUrl' => '/b/'.$this->biz()->ulid.'/invoices/'.$invoice->id,
+            'claims' => collect(), 'openClaim' => null, 'agreement' => null, 'canReport' => false, 'reviewing' => false,
+            'agreementTitle' => $invoice->contractVersion?->title ?? $invoice->contract?->title,
+        ]);
+    }
+
     public function documentVersion(int $id, int $version, DocumentStore $docs)
     {
         $invoice = $this->invoice($id);

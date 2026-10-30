@@ -70,6 +70,12 @@ class TenantSecurityTest extends TestCase
         $this->signIn($owner)->post("/b/{$biz->ulid}/invoices", ['client_id' => $client->id, 'discount_type' => 'none', 'terms' => '', 'lines' => $line])->assertRedirect();
         $this->assertNull(Invoice::latest('id')->value('terms'), 'cleared terms stay cleared');
 
+        // Web preview of a draft (what the client will see), without saving anything.
+        $this->signIn($owner)->get("/b/{$biz->ulid}/invoices/{$dated->id}/preview")->assertOk()
+            ->assertSee('this is what Termsy LLC sees')->assertSee('DRAFT')->assertSee('Payment terms:')->assertSee('Net 15')->assertSee('Terms &amp; conditions', false);
+        $this->assertNull($dated->fresh()->number);
+        $this->signIn($owner)->get("/b/{$biz->ulid}/invoices/{$issued->id}/preview")->assertOk()->assertSee($issued->fresh()->number);
+
         $biz->update(['default_terms_text' => 'Our terms for {client_name}.']);
         $this->assertSame("Payment terms: {payment_terms}.\n\nOur terms for {client_name}.\n\nClient-specific terms: Reference PO 4500123.", \App\Support\InvoiceTerms::forClient($biz->fresh(), $client->fresh()), 'payment terms are always included');
     }
