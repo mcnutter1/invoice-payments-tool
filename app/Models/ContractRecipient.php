@@ -28,4 +28,13 @@ class ContractRecipient extends Model
     {
         return in_array($this->role, ['client_signer', 'countersigner'], true);
     }
+
+    public function verificationLabel(): string
+    {
+        return match ($this->verification_method ?? ($this->verified_email ? 'email_otp' : 'authenticated_session')) {
+            'email_otp' => 'Email one-time code to '.($this->verified_email ?? $this->email),
+            'email_link' => 'Personal signing link emailed to '.$this->email.' (no one-time code)',
+            default => 'Authenticated McNutt Cloud session',
+        };
+    }
 }

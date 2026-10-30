@@ -72,6 +72,9 @@
         </table>
     </td>
 </tr></table>
+@if ($invoice->contractVersion)
+    <div style="margin-top: 10px; padding: 5px 8px; border-left: 3px solid {{ $accent }}; background: #f8fafc;">Invoice related to agreement: <strong>{{ $invoice->contractVersion->title ?? $invoice->contractVersion->contract?->title }}</strong></div>
+@endif
 
 <table style="margin-top: 14px;"><tr>
     <td style="width:50%; vertical-align: top;">
@@ -125,7 +128,7 @@
                 @if (! empty($instructions['zelle']['email']))<div>{{ $instructions['zelle']['email'] }}</div>@endif
                 @if (! empty($instructions['zelle']['phone']))<div>{{ $instructions['zelle']['phone'] }}</div>@endif
                 <div>Memo: {{ $memo ?? 'invoice number' }}</div>
-                @if (! empty($zelleQr))<img src="{{ $zelleQr }}" alt="" style="width: 80px; height: 80px; margin-top: 4px;">@endif
+                @if (! empty($zelleQr))<div style="text-align: center; margin: 6px 0 2px;"><img src="{{ $zelleQr }}" alt="" style="width: 84px; height: 84px;"></div>@endif
                 <div class="muted" style="font-size:8px;">Use your bank's app. We never ask for your bank login.</div>
             </div></td>
         @endif

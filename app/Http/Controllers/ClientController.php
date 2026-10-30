@@ -89,13 +89,22 @@ class ClientController extends Controller
         $client = $this->client($id)->load('contacts');
         $b = $this->biz();
         $ctx = $this->ctx();
+        $schedules = $ctx->can('recurring.view') ? $client->schedules()->with('lines')->get() : collect();
+        $issued = Invoice::where('business_id', $b->id)->where('client_id', $id)->where('status', 'issued');
+        $canMoney = $ctx->can('invoices.view');
 
         return view('clients.show', [
             'client' => $client,
             'invoices' => $ctx->can('invoices.view') ? Invoice::where('business_id', $b->id)->where('client_id', $id)->latest('id')->limit(50)->get() : collect(),
             'payments' => $ctx->can('payments.view') ? Payment::where('business_id', $b->id)->where('client_id', $id)->latest('received_date')->limit(50)->get() : collect(),
             'contracts' => $ctx->can('contracts.view') ? $client->contracts()->latest()->get() : collect(),
-            'schedules' => $ctx->can('recurring.view') ? $client->schedules()->get() : collect(),
+            'schedules' => $schedules,
+            'revenue' => $ctx->can('recurring.view') ? app(\App\Services\Recurring\RecurringRevenue::class)->summary($b, $id, $schedules) : null,
+            'values' => $canMoney ? [
+                'billed' => (int) (clone $issued)->sum('total_cents'),
+                'collected' => $ctx->can('payments.view') ? (int) Payment::where('business_id', $b->id)->where('client_id', $id)->where('status', '!=', 'reversed')->sum('amount_cents') : null,
+                'overdue' => (int) (clone $issued)->where('balance_cents', '>', 0)->whereDate('due_date', '<', $b->localToday())->sum('balance_cents'),
+            ] : null,
             'balance' => (int) Invoice::where('business_id', $b->id)->where('client_id', $id)->where('status', 'issued')->sum('balance_cents'),
             'credit' => $ctx->can('payments.view') ? -(int) JournalLine::where('business_id', $b->id)->where('client_id', $id)->where('account_id', $b->account('customer_advances')->id)->sum(\Illuminate\Support\Facades\DB::raw('debit_cents - credit_cents')) : 0,
             'activity' => \App\Models\AuditEvent::where('business_id', $b->id)->where('object_type', 'Client')->where('object_id', $id)->latest('id')->limit(20)->get(),

@@ -38,14 +38,14 @@
                 @endforeach
             </nav>
         </details>
-        <details class="relative" data-menu id="biz-switcher">
+        <details class="relative min-w-0" data-menu id="biz-switcher">
             <summary class="flex cursor-pointer list-none items-center gap-2 rounded-md px-2 py-1 hover:bg-slate-100" aria-label="Switch business">
                 @if ($biz->logo_document_id && $ctx->can('business.view'))
                     <img src="{{ $bu }}/settings/logo" alt="" class="h-8 w-8 rounded object-contain">
                 @else
                     <span class="flex h-8 w-8 items-center justify-center rounded bg-brand-700 text-sm font-bold text-white" aria-hidden="true">{{ mb_substr($biz->name(), 0, 1) }}</span>
                 @endif
-                <span class="max-w-[14rem] truncate font-semibold text-slate-900">{{ $biz->name() }}</span>
+                <span class="max-w-[9rem] truncate font-semibold text-slate-900 sm:max-w-[14rem]">{{ $biz->name() }}</span>
                 <span class="hidden text-xs text-slate-500 sm:inline">{{ implode(', ', $ctx->roleNames) }}</span>
                 <span aria-hidden="true" class="text-slate-400">▾</span>
             </summary>
@@ -72,7 +72,7 @@
         </form>
         @if ($ctx->canAny('invoices.manage', 'clients.manage', 'payments.record', 'expenses.manage', 'contracts.manage'))
         <details class="relative md:ml-0 ml-auto" data-menu>
-            <summary class="btn btn-primary list-none">+ New</summary>
+            <summary class="btn btn-primary list-none" aria-label="Create new"><span aria-hidden="true">+</span><span class="hidden sm:inline">New</span></summary>
             <div class="menu right-0">
                 @if ($ctx->can('invoices.manage'))<a href="{{ $bu }}/invoices/new">Invoice</a>@endif
                 @if ($ctx->can('clients.manage'))<a href="{{ $bu }}/clients/new">Client</a>@endif
@@ -86,7 +86,10 @@
         </details>
         @endif
         <details class="relative" data-menu>
-            <summary class="btn btn-ghost list-none" aria-label="Account menu">{{ $ctx->user->name ?: $ctx->user->email }}</summary>
+            <summary class="btn btn-ghost list-none" aria-label="Account menu">
+                <span class="flex h-7 w-7 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700 sm:hidden" aria-hidden="true">{{ mb_strtoupper(mb_substr($ctx->user->name ?: $ctx->user->email, 0, 1)) }}</span>
+                <span class="hidden sm:inline">{{ $ctx->user->name ?: $ctx->user->email }}</span>
+            </summary>
             <div class="menu right-0">
                 <div class="px-3 py-2 text-xs text-slate-500">{{ $ctx->user->email }}</div>
                 <form method="post" action="/auth/logout">@csrf<button type="submit">Sign out</button></form>
@@ -106,6 +109,24 @@
         </nav>
     </aside>
     <main id="main" class="min-w-0 flex-1 p-3 sm:p-6">
+        @if (! empty($breadcrumbs) && count($breadcrumbs) > 1)
+            @php $parent = collect($breadcrumbs)->reverse()->first(fn ($c) => $c[1] !== null); @endphp
+            <nav aria-label="Breadcrumb" class="mb-4">
+                <a href="{{ $parent[1] }}" class="inline-flex items-center gap-1 text-sm font-medium text-slate-500 no-underline hover:text-slate-900 sm:hidden"><span aria-hidden="true">←</span> {{ $parent[0] }}</a>
+                <ol class="hidden flex-wrap items-center gap-1.5 text-sm text-slate-500 sm:flex">
+                    @foreach ($breadcrumbs as [$label, $url])
+                        <li class="flex min-w-0 items-center gap-1.5">
+                            @if (! $loop->first)<svg aria-hidden="true" viewBox="0 0 20 20" class="h-3.5 w-3.5 flex-none fill-current text-slate-300"><path d="M7.3 4.3a1 1 0 0 1 1.4 0l5 5a1 1 0 0 1 0 1.4l-5 5a1 1 0 0 1-1.4-1.4L11.6 10 7.3 5.7a1 1 0 0 1 0-1.4Z"/></svg>@endif
+                            @if ($url)
+                                <a href="{{ $url }}" class="max-w-[16rem] truncate text-slate-500 no-underline hover:text-slate-900">{{ $label }}</a>
+                            @else
+                                <span class="max-w-[20rem] truncate font-medium text-slate-900" aria-current="page">{{ $label }}</span>
+                            @endif
+                        </li>
+                    @endforeach
+                </ol>
+            </nav>
+        @endif
         @include('partials.flash')
         @yield('content')
     </main>

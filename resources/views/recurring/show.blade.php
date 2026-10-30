@@ -4,7 +4,7 @@
 <div class="flex flex-wrap items-start justify-between gap-3">
     <div>
         <h1>{{ $schedule->name }} @include('partials.status', ['s' => $schedule->status])</h1>
-        <p class="text-sm text-slate-500">{{ $schedule->client->display_name }} · every {{ $schedule->interval > 1 ? $schedule->interval.' ' : '' }}{{ $schedule->cadence }}{{ $schedule->interval > 1 ? 's' : '' }} · @money($amount) per period
+        <p class="text-sm text-slate-500">{{ $schedule->client->display_name }} · every {{ $schedule->interval > 1 ? $schedule->interval.' ' : '' }}{{ $schedule->cadence }}{{ $schedule->interval > 1 ? 's' : '' }} · @money($amount) per period · @money($annual)/year
             @if ($schedule->contract) · <a href="{{ $bu }}/contracts/{{ $schedule->contract_id }}">{{ $schedule->contract->number }}</a> ({{ $schedule->contract->status }}) @endif</p>
     </div>
     @if ($ctx->can('recurring.manage') && $schedule->status !== 'cancelled')

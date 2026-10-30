@@ -97,7 +97,7 @@ class InvoiceController extends Controller
 
         return [
             'invoice' => $invoice,
-            'clients' => Client::where('business_id', $b->id)->where('status', 'active')->orderBy('display_name')->get(['id', 'display_name', 'tax_exempt', 'default_terms_days', 'email']),
+            'clients' => Client::with('contacts')->where('business_id', $b->id)->where('status', 'active')->orderBy('display_name')->get(),
             'products' => Product::where('business_id', $b->id)->where('active', true)->orderBy('name')->get(),
             'taxRates' => TaxRate::where('business_id', $b->id)->where('active', true)->orderBy('name')->get(),
             'incomeAccounts' => ChartAccount::where('business_id', $b->id)->where('type', 'income')->where('is_active', true)->orderBy('code')->get(),
@@ -147,6 +147,7 @@ class InvoiceController extends Controller
 
     private function payload(Request $request): array
     {
+        $this->mergeRecipients($request);
         $data = $this->validated($request);
         $data['recipients'] = array_filter(array_map('trim', preg_split('/[,;\s]+/', (string) ($data['recipients'] ?? ''))));
         $data['payment_methods'] = $data['payment_methods'] ?? [];
@@ -302,6 +303,7 @@ class InvoiceController extends Controller
     public function send(Request $request, int $id, EmailComposer $composer)
     {
         $invoice = $this->invoice($id);
+        $this->mergeRecipients($request);
         $data = $request->validate([
             'recipients' => ['required', 'string', 'max:1000'],
             'message' => ['nullable', 'string', 'max:2000'],

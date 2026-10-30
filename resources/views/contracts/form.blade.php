@@ -73,6 +73,8 @@
                 <label class="mr-3 inline-flex items-center gap-1 text-sm"><input type="radio" name="signing_order" value="parallel" @checked(old('signing_order', $contract?->signing_order ?? 'parallel') === 'parallel')> Any order</label>
                 <label class="inline-flex items-center gap-1 text-sm"><input type="radio" name="signing_order" value="sequential" @checked(old('signing_order', $contract?->signing_order) === 'sequential')> In order listed</label>
             </fieldset>
+            <label class="flex items-start gap-2 text-sm"><input type="hidden" name="require_email_code" value="0"><input class="check mt-0.5" type="checkbox" name="require_email_code" value="1" @checked(old('require_email_code', $contract?->require_email_code ?? true))>
+                <span>Require a one-time email code before signing<span class="block text-xs text-slate-500">Stronger evidence of who signed. When off, possession of the personal signing link is the verification.</span></span></label>
             @foreach ($signers as $i => $s)
                 <div class="space-y-1 rounded border border-slate-200 p-2" data-signer-slot>
                     <div class="text-xs font-medium text-slate-500">Client signer {{ $i + 1 }}{{ $i > 0 ? ' (optional)' : '' }}</div>

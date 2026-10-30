@@ -27,7 +27,7 @@
             <div class="sm:col-span-2"><label class="label" for="client_id">Client</label>
                 <select class="input" id="client_id" name="client_id" required data-client-select>
                     <option value="">Choose a client…</option>
-                    @foreach ($clients as $c)<option value="{{ $c->id }}" data-exempt="{{ $c->tax_exempt ? 1 : 0 }}" data-email="{{ $c->email }}" @selected(old('client_id', $invoice?->client_id ?? $selectedClient) == $c->id)>{{ $c->display_name }}</option>@endforeach
+                    @foreach ($clients as $c)<option value="{{ $c->id }}" data-exempt="{{ $c->tax_exempt ? 1 : 0 }}" data-email="{{ $c->email }}" data-recipients="{{ json_encode($c->recipientOptions()) }}" @selected(old('client_id', $invoice?->client_id ?? $selectedClient) == $c->id)>{{ $c->display_name }}</option>@endforeach
                 </select>
                 @if ($clients->isEmpty())<p class="hint">No clients yet — <a href="{{ $bu }}/clients/new">add a client</a> first.</p>@endif
             </div>
@@ -37,11 +37,11 @@
             <div><label class="label" for="service_end">Service period end</label><input class="input" type="date" id="service_end" name="service_end" value="{{ old('service_end', $invoice?->service_end?->toDateString()) }}"></div>
             <div><label class="label" for="po_number">PO / reference</label><input class="input" id="po_number" name="po_number" value="{{ old('po_number', $invoice?->po_number) }}"></div>
             <div><label class="label" for="contract_version_id">Linked agreement</label>
-                <select class="input" id="contract_version_id" name="contract_version_id">
+                <select class="input" id="contract_version_id" name="contract_version_id" data-client-filtered="#client_id">
                     <option value="">None</option>
-                    @foreach ($contractVersions as $v)<option value="{{ $v->id }}" @selected(old('contract_version_id', $invoice?->contract_version_id) == $v->id)>{{ $v->contract->number }} v{{ $v->version }} · {{ $v->title }}</option>@endforeach
+                    @foreach ($contractVersions as $v)<option value="{{ $v->id }}" data-client="{{ $v->contract->client_id }}" @selected(old('contract_version_id', $invoice?->contract_version_id) == $v->id)>{{ $v->contract->number }} v{{ $v->version }} · {{ $v->title }}</option>@endforeach
                 </select>
-                <p class="hint">Only completed agreements can be linked; the client will see that exact signed version.</p>
+                <p class="hint">Only this client's completed agreements are listed; the client will see that exact signed version.</p>
             </div>
         </div>
 
@@ -70,7 +70,12 @@
                     <label class="mr-4 inline-flex items-center gap-2 text-sm"><input class="check" type="checkbox" name="payment_methods[]" value="{{ $m }}" @checked(in_array($m, $methods, true))> {{ $m === 'zelle' ? 'Zelle' : 'Mail a check' }}</label>
                 @endforeach
             </fieldset>
-            <div><label class="label" for="recipients">Email recipients</label><input class="input" id="recipients" name="recipients" value="{{ old('recipients', implode(', ', $invoice?->recipients ?? [])) }}" placeholder="Defaults to the client's billing email"></div>
+            <div class="sm:col-span-2">
+                @php $edClient = $clients->firstWhere('id', (int) old('client_id', $invoice?->client_id ?? $selectedClient)); @endphp
+                @include('partials.recipient-picker', ['id' => 'recipients', 'label' => 'Email recipients', 'options' => $edClient?->recipientOptions() ?? [],
+                    'selected' => old('recipients', $invoice?->recipients ?? []), 'defaultBilling' => ! $invoice, 'clientSelect' => '#client_id',
+                    'hint' => 'Defaults to the billing contact. Each recipient gets their own secure link when you send.'])
+            </div>
         </div>
     </div>
 

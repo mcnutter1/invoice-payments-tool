@@ -10,7 +10,7 @@
 @endif
 <form method="post" action="{{ $bu }}/invoices/{{ $invoice->id }}/send" class="card card-body mt-4 max-w-2xl space-y-4">
     @csrf
-    <div><label class="label" for="recipients">To</label><input class="input" id="recipients" name="recipients" value="{{ old('recipients', $recipients) }}" required><p class="hint">Separate multiple addresses with commas. Each recipient gets their own link.</p></div>
+    @include('partials.recipient-picker', ['id' => 'recipients', 'label' => 'To', 'options' => $invoice->client->recipientOptions(), 'selected' => old('recipients', $recipients)])
     <fieldset><legend class="label">Message type</legend>
         <label class="mr-4 inline-flex items-center gap-2 text-sm"><input type="radio" name="kind" value="invoice" checked> Invoice</label>
         <label class="inline-flex items-center gap-2 text-sm"><input type="radio" name="kind" value="reminder"> Payment reminder</label>

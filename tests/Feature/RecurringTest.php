@@ -26,6 +26,59 @@ class RecurringTest extends TestCase
         return [$owner, $biz, $s];
     }
 
+    public function test_arr_is_annualized_per_cadence_and_shown_on_client_dashboard_and_recurring_pages(): void
+    {
+        [$owner, $biz, $monthly] = $this->schedule(['start_date' => '2026-11-01']); // $2,000 / month
+        $client = $monthly->client;
+        $svc = app(RecurringService::class);
+        $base = ['client_id' => $client->id, 'start_date' => '2026-11-01', 'auto_issue' => false];
+        $svc->save($biz, null, $base + ['name' => 'Quarterly', 'cadence' => 'quarter', 'interval' => 1, 'lines' => [['name' => 'Review', 'quantity' => '2', 'unit_price' => '750']]]);
+        $svc->save($biz, null, $base + ['name' => 'Biweekly', 'cadence' => 'week', 'interval' => 2, 'lines' => [['name' => 'Support', 'quantity' => '1', 'unit_price' => '100']]]);
+        $paused = $svc->save($biz, null, $base + ['name' => 'Paused', 'cadence' => 'year', 'interval' => 1, 'lines' => [['name' => 'X', 'quantity' => '1', 'unit_price' => '999']]]);
+        $paused->update(['status' => 'paused']);
+        $ended = $svc->save($biz, null, $base + ['name' => 'Ended', 'cadence' => 'month', 'interval' => 1, 'end_date' => '2026-11-15', 'lines' => [['name' => 'Y', 'quantity' => '1', 'unit_price' => '50']]]);
+        $ended->update(['end_date' => '2020-01-01']);
+
+        // 2,000×12 + 1,500×4 + 100×26 = 24,000 + 6,000 + 2,600
+        $r = app(\App\Services\Recurring\RecurringRevenue::class)->summary($biz);
+        $this->assertSame(3260000, $r['arr']);
+        $this->assertSame(271667, $r['mrr']);
+        $this->assertSame(3, $r['count']);
+        $this->assertSame(99900, $r['by_schedule'][$paused->id]);
+
+        $this->signIn($owner)->get("/b/{$biz->ulid}/clients/{$client->id}")->assertOk()->assertSee('Annual recurring revenue')->assertSee('$32,600.00')->assertSee('Lifetime billed');
+        $this->signIn($owner)->get("/b/{$biz->ulid}")->assertOk()->assertSee('Annual recurring revenue')->assertSee('$32,600.00');
+        $this->signIn($owner)->get("/b/{$biz->ulid}/recurring")->assertOk()->assertSee('$32,600.00')->assertSee('$24,000.00');
+        $this->signIn($owner)->get("/b/{$biz->ulid}/recurring/new")->assertOk()->assertSee('+ Add service or product')->assertSee('data-lines-empty', false);
+        $this->signIn($owner)->post("/b/{$biz->ulid}/recurring", ['name' => 'Empty', 'client_id' => $client->id, 'cadence' => 'month', 'interval' => 1, 'start_date' => '2026-11-01'])
+            ->assertSessionHasErrors(['lines' => 'Add at least one service or product.']);
+    }
+
+    public function test_form_filters_agreements_by_client_and_picks_recipients_from_contacts(): void
+    {
+        $owner = $this->makeUser();
+        $biz = $this->makeBusiness($owner);
+        $a = $this->makeClient($biz, 'Alpha Co');
+        $b = $this->makeClient($biz, 'Beta Co');
+        \App\Models\Contact::create(['business_id' => $biz->id, 'client_id' => $a->id, 'name' => 'Ann Billing', 'email' => 'ann@alpha.test', 'is_primary_billing' => true]);
+        \App\Models\Contact::create(['business_id' => $biz->id, 'client_id' => $a->id, 'name' => 'Al Ops', 'email' => 'al@alpha.test']);
+        $svc = app(\App\Services\Contracts\ContractService::class);
+        $ca = $svc->create($biz, ['client_id' => $a->id, 'title' => 'Alpha MSA', 'body' => 'x', 'signing_order' => 'parallel']);
+        $cb = $svc->create($biz, ['client_id' => $b->id, 'title' => 'Beta MSA', 'body' => 'x', 'signing_order' => 'parallel']);
+
+        $html = $this->signIn($owner)->get("/b/{$biz->ulid}/recurring/new")->assertOk()->getContent();
+        $this->assertMatchesRegularExpression('/data-client="'.$a->id.'"\s+>[^<]*Alpha MSA/', $html);
+        $this->assertMatchesRegularExpression('/data-client="'.$b->id.'"\s+hidden disabled\s*>[^<]*Beta MSA/', $html);
+        $this->assertStringContainsString('value="ann@alpha.test" checked', $html);
+        $this->assertStringNotContainsString('value="al@alpha.test" checked', $html);
+
+        // Agreement from another client is rejected server-side.
+        $base = ['name' => 'R', 'client_id' => $a->id, 'cadence' => 'month', 'interval' => 1, 'start_date' => '2026-11-01', 'lines' => [['name' => 'X', 'quantity' => '1', 'unit_price' => '10']]];
+        $this->signIn($owner)->post("/b/{$biz->ulid}/recurring", $base + ['contract_id' => $cb->id])->assertSessionHas('error');
+        $this->signIn($owner)->post("/b/{$biz->ulid}/recurring", $base + ['contract_id' => $ca->id, 'recipient_emails' => ['ann@alpha.test', 'al@alpha.test'], 'recipients' => 'boss@alpha.test'])->assertRedirect();
+        $this->assertSame(['ann@alpha.test', 'al@alpha.test', 'boss@alpha.test'], RecurringSchedule::latest('id')->first()->recipients);
+    }
+
     public function test_month_end_clamp_restores_anchor_and_handles_leap_year(): void
     {
         $s = new RecurringSchedule(['cadence' => 'month', 'interval' => 1, 'start_date' => Carbon::parse('2028-01-31')]);

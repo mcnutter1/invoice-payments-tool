@@ -26,7 +26,7 @@
         @if ($r->role !== 'cc')
         <tr><td>{{ $r->typed_name ?? $r->name }}{{ $r->typed_title ? ', '.$r->typed_title : '' }}<br><span class="muted">{{ $r->email }}</span></td>
             <td>{{ $r->role === 'countersigner' ? 'Business countersigner' : 'Client signer' }}</td>
-            <td>{{ $r->verified_email ? 'Email one-time code to '.$r->verified_email : 'Authenticated McNutt Cloud session' }}</td>
+            <td>{{ $r->verificationLabel() }}</td>
             <td>{{ $r->signed_at?->utc()->format('Y-m-d H:i:s') }}</td>
             <td>{{ $r->ip }}<br><span class="muted">{{ \Illuminate\Support\Str::limit($r->user_agent, 80) }}</span></td>
             <td class="mono">{{ $r->signature_hash }}</td></tr>

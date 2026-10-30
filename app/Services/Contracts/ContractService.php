@@ -138,6 +138,7 @@ class ContractService
             'value_cap_cents' => ! empty($data['value_cap']) ? Money::parse($data['value_cap']) : null,
             'cap_behavior' => ($data['cap_behavior'] ?? 'warn') === 'block' ? 'block' : 'warn',
             'signing_order' => ($data['signing_order'] ?? $contract->signing_order) === 'sequential' ? 'sequential' : 'parallel',
+            'require_email_code' => array_key_exists('require_email_code', $data) ? (bool) $data['require_email_code'] : ($contract->require_email_code ?? true),
         ])->save();
         $client = Client::findOrFail($contract->client_id);
         $template = ! empty($data['template_id']) ? ContractTemplate::where('business_id', $business->id)->findOrFail($data['template_id']) : null;

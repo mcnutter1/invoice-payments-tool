@@ -8,7 +8,8 @@ draft → prepared (merge fields validated, PDF rendered, SHA-256 recorded, vers
 ## Signer verification & ceremony
 1. Recipient-specific link → session grant (`contract_sign`).
 2. Full document shown (HTML of the immutable rendered text, plus PDF download).
-3. Email one-time code: 6 digits, HMAC-hashed with `APP_KEY`, 10-minute expiry, max 5 attempts, max 5 sends, 60 s resend cooldown. Verification proves inbox access only — not legal identity.
+3. Email one-time code (per-agreement option, on by default): 6 digits, HMAC-hashed with `APP_KEY`, 10-minute expiry, max 5 attempts, max 5 sends, 60 s resend cooldown. Verification proves inbox access only — not legal identity. When the agreement waives the code, the recipient-specific emailed link is the verification and the certificate records "Personal signing link emailed to … (no one-time code)".
+   Countersigners may save a drawn signature (stored privately per business membership) and reuse it; each use is still a separate, hashed signature event.
 4. Consent to electronic records (versioned text, downloadable), typed legal name/title, authority acknowledgement, typed or drawn signature, explicit "Sign agreement" confirmation.
 5. Business countersigners sign inside the authenticated app (verification method `authenticated_session`, fresh McNutt Cloud validation).
 

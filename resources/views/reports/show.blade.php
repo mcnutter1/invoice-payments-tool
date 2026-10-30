@@ -10,7 +10,6 @@
 @endphp
 <div class="flex flex-wrap items-start justify-between gap-3">
     <div>
-        <a href="{{ $bu }}/reports" class="text-sm">← Reports</a>
         <h1>{{ $meta['title'] }}</h1>
         <p class="text-sm text-slate-500">{{ $biz->name() }} · USD ·
             @if ($usesRange) {{ \Illuminate\Support\Carbon::parse($meta['from'])->format('M j, Y') }} – {{ \Illuminate\Support\Carbon::parse($meta['to'])->format('M j, Y') }} @endif

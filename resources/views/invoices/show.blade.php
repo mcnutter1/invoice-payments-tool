@@ -22,6 +22,19 @@
         @if ($ctx->can('invoices.manage'))<form method="post" action="{{ $bu }}/invoices/{{ $invoice->id }}/duplicate">@csrf<button class="btn btn-ghost">Duplicate</button></form>@endif
     </div>
 </div>
+@if ($invoice->contractVersion)
+    <p class="mt-3 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">Invoice related to agreement:
+        <a class="font-medium" href="{{ $bu }}/contracts/{{ $invoice->contract_id ?? $invoice->contractVersion->contract_id }}">{{ $invoice->contractVersion->title }}</a>
+        <span class="text-slate-500">· {{ $invoice->contractVersion->contract?->number }} v{{ $invoice->contractVersion->version }}</span></p>
+@endif
+@unless ($invoice->isDraft())
+<div class="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <div class="metric"><div class="metric-label">Total</div><div class="metric-value">@money($invoice->total_cents)</div></div>
+    <div class="metric"><div class="metric-label">Received</div><div class="metric-value">@money($invoice->paid_cents)</div>@if($invoice->credited_cents + $invoice->written_off_cents)<div class="metric-note">+ @money($invoice->credited_cents + $invoice->written_off_cents) credits</div>@endif</div>
+    <div class="metric"><div class="metric-label">Balance due</div><div @class(['metric-value', 'text-red-700' => $invoice->isOverdue()])>@money($invoice->status === 'void' ? 0 : $invoice->balance_cents)</div></div>
+    <div class="metric"><div class="metric-label">Due</div><div class="metric-value text-lg">{{ $invoice->due_date?->format('M j, Y') ?? '—' }}</div><div class="metric-note">{{ $invoice->statusLabel() }}</div></div>
+</div>
+@endunless
 
 @if ($invoice->isDraft())
     <div class="card card-body mt-4 border-brand-200 bg-brand-50">

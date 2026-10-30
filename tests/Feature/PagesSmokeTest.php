@@ -43,7 +43,13 @@ class PagesSmokeTest extends TestCase
         foreach ($pages as $p) {
             $res = $this->signIn($owner)->get($p);
             $this->assertSame(200, $res->getStatusCode(), "GET {$p} returned {$res->getStatusCode()}");
+            $isPage = str_starts_with($p, $bu.'/') && ! str_contains($p, 'format=') && ! str_contains($p, '/template/');
+            if ($isPage) $this->assertStringContainsString('aria-label="Breadcrumb"', $res->getContent(), "No breadcrumb on {$p}");
         }
+        $this->signIn($owner)->get($bu)->assertDontSee('aria-label="Breadcrumb"', false);
+        $this->signIn($owner)->get($bu.'/invoices/'.$inv->id.'/send')->assertSee('aria-label="Breadcrumb"', false)
+            ->assertSee('href="'.$bu.'/invoices"', false)->assertSee('href="'.$bu.'/invoices/'.$inv->id.'"', false)->assertSee('Invoice '.$inv->number);
+        $this->signIn($owner)->get($bu.'/clients/'.$client->id.'/edit')->assertSee($client->display_name);
         foreach ([$bu.'/invoices/'.$inv->id.'/pdf', $bu.'/invoices/'.$draft->id.'/pdf', $bu.'/settings/preview-pdf', $bu.'/clients/'.$client->id.'/statement?format=pdf'] as $p) {
             $this->signIn($owner)->get($p)->assertOk()->assertHeader('Content-Type', 'application/pdf');
         }

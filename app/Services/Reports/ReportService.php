@@ -359,8 +359,8 @@ class ReportService
     {
         $basis = $b->reporting_basis ?: 'accrual';
         $pnl = $this->profitAndLoss($b, $from, $to, $basis);
-        $collected = (int) \App\Models\Payment::where('business_id', $b->id)->where('status', '!=', 'reversed')->whereBetween('received_date', [$from, $to])->sum('amount_cents');
-        $issued = (int) Invoice::where('business_id', $b->id)->where('status', 'issued')->whereBetween('issue_date', [$from, $to])->sum('total_cents');
+        $collected = (int) \App\Models\Payment::where('business_id', $b->id)->where('status', '!=', 'reversed')->whereDate('received_date', '>=', $from)->whereDate('received_date', '<=', $to)->sum('amount_cents');
+        $issued = (int) Invoice::where('business_id', $b->id)->where('status', 'issued')->whereDate('issue_date', '>=', $from)->whereDate('issue_date', '<=', $to)->sum('total_cents');
         $outstanding = (int) Invoice::where('business_id', $b->id)->where('status', 'issued')->sum('balance_cents');
         $overdue = (int) Invoice::where('business_id', $b->id)->where('status', 'issued')->where('balance_cents', '>', 0)->whereDate('due_date', '<', $b->localToday())->sum('balance_cents');
 

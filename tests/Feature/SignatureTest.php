@@ -114,6 +114,53 @@ class SignatureTest extends TestCase
         $this->assertSame('completed', $v->fresh()->status);
     }
 
+    public function test_email_code_can_be_waived_and_countersigner_reuses_saved_signature(): void
+    {
+        $owner = $this->makeUser();
+        $biz = $this->makeBusiness($owner);
+        $client = $this->makeClient($biz);
+        $svc = app(ContractService::class);
+        $png = function () { $img = imagecreatetruecolor(600, 200); imagefill($img, 0, 0, imagecolorallocate($img, 255, 255, 255)); imageline($img, 10, 150, 590, 60, 0); ob_start(); imagepng($img); return 'data:image/png;base64,'.base64_encode(ob_get_clean()); };
+        $make = function () use ($svc, $biz, $client, $owner) {
+            $c = $svc->create($biz, ['client_id' => $client->id, 'title' => 'NDA', 'template_id' => $biz->contractTemplates()->value('id'), 'effective_date' => '2026-07-01',
+                'scope' => 'x', 'fees' => 'y', 'signing_order' => 'parallel', 'require_email_code' => false,
+                'signers' => [['name' => 'Pat', 'email' => 'pat@example.test']], 'countersigner_user_id' => $owner->id]);
+            $v = $svc->prepare($c->currentVersion);
+            $svc->send($v);
+
+            return [$c, $v->fresh()];
+        };
+
+        [$c1, $v1] = $make();
+        $this->assertFalse($c1->fresh()->require_email_code);
+        app(OutboxProcessor::class)->run(20, microtime(true) + 10);
+        $token = $this->lastBodyMatching('#/c/([A-Za-z0-9_-]{40,64})#');
+        $r = ContractRecipient::where('contract_version_id', $v1->id)->where('role', 'client_signer')->first();
+        $this->get('/c/'.$token);
+        $this->get('/c/r/'.$r->id)->assertOk()->assertDontSee('Verify your email')->assertSee('data-sig-canvas', false)
+            ->assertSee('value="draw" checked', false);
+        $this->post('/c/r/'.$r->id.'/sign', ['typed_name' => 'Pat', 'consent' => 1, 'authority' => 1, 'signature_kind' => 'draw', 'signature_data' => $png(), 'document_sha256' => $v1->sha256])->assertRedirect();
+        $this->assertSame('email_link', $r->fresh()->verification_method);
+        $this->assertStringContainsString('no one-time code', $r->fresh()->verificationLabel());
+
+        // Countersign with a drawn signature and save it for reuse.
+        $this->flushSession();
+        $this->signIn($owner)->post("/b/{$biz->ulid}/contracts/{$c1->id}/countersign", ['typed_name' => 'Owner', 'consent' => 1, 'authority' => 1,
+            'signature_kind' => 'draw', 'signature_data' => $png(), 'save_signature' => 1, 'document_sha256' => $v1->sha256])->assertRedirect();
+        $this->assertSame('completed', $v1->fresh()->status);
+        $this->assertNotNull(\App\Models\Membership::where('business_id', $biz->id)->where('user_id', $owner->id)->value('signature_document_id'));
+
+        [$c2, $v2] = $make();
+        $counter = ContractRecipient::where('contract_version_id', $v2->id)->where('role', 'countersigner')->first();
+        $this->signIn($owner)->get("/b/{$biz->ulid}/contracts/{$c2->id}/countersign")->assertOk()->assertSee('Your saved signature')->assertSee('value="saved" checked', false);
+        $this->signIn($owner)->post("/b/{$biz->ulid}/contracts/{$c2->id}/countersign", ['typed_name' => 'Owner', 'consent' => 1, 'authority' => 1,
+            'signature_kind' => 'saved', 'document_sha256' => $v2->sha256])->assertRedirect();
+        $this->assertSame('draw', $counter->fresh()->signature_kind);
+        $this->assertNotNull($counter->fresh()->signature_document_id);
+        $this->signIn($owner)->post("/b/{$biz->ulid}/my-signature/delete")->assertRedirect();
+        $this->assertNull(\App\Models\Membership::where('business_id', $biz->id)->where('user_id', $owner->id)->value('signature_document_id'));
+    }
+
     public function test_contract_client_can_change_while_draft_and_signers_come_from_client_contacts(): void
     {
         $owner = $this->makeUser();

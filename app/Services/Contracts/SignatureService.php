@@ -101,7 +101,7 @@ class SignatureService
 
     /**
      * @param array{typed_name:string, typed_title?:string|null, consent:bool, authority:bool, signature_kind:string, signature_data?:string|null, document_sha256:string} $input
-     * @param string $method 'email_otp' | 'authenticated_session'
+     * @param string $method 'email_otp' | 'email_link' | 'authenticated_session'
      */
     public function sign(ContractVersion $v, ContractRecipient $r, array $input, string $method = 'email_otp'): ContractRecipient
     {
@@ -149,6 +149,7 @@ class SignatureService
                 'signature_kind' => $kind,
                 'signature_document_id' => $docId,
                 'signature_hash' => $sigHash,
+                'verification_method' => $method,
                 'ip' => $req->ip(),
                 'user_agent' => mb_substr((string) $req->userAgent(), 0, 255),
             ]);
@@ -166,7 +167,7 @@ class SignatureService
                 Contract::whereKey($v->contract_id)->update(['status' => 'partially_signed']);
                 $this->contracts->inviteEligible($v);
             }
-            Audit::log($v->business_id, 'contract.signed', $r, null, ['recipient' => $r->email, 'method' => $method], null, $method === 'email_otp' ? 'public' : null);
+            Audit::log($v->business_id, 'contract.signed', $r, null, ['recipient' => $r->email, 'method' => $method], null, $method === 'authenticated_session' ? null : 'public');
 
             return $r;
         });

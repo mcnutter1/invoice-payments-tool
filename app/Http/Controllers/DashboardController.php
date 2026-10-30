@@ -15,21 +15,29 @@ use Illuminate\Http\Request;
 
 class DashboardController extends Controller
 {
-    public function show(Request $request, ReportService $reports)
+    public function show(Request $request, ReportService $reports, \App\Services\Reports\DashboardService $dash)
     {
         $b = $this->biz();
         $ctx = $this->ctx();
         [$from, $to, $preset] = $this->dateRange($request);
         $metrics = $ctx->can('reports.pnl.view') ? $reports->dashboard($b, $from, $to) : null;
-        $ar = $ctx->canAny('reports.ar.view', 'invoices.view') ? [
+        $previous = $metrics ? $reports->dashboard($b, ...\App\Services\Reports\DashboardService::previousRange($preset, $from, $to)) : null;
+        $canAr = $ctx->canAny('reports.ar.view', 'invoices.view');
+        $ar = $canAr ? [
             'outstanding' => (int) Invoice::where('business_id', $b->id)->where('status', 'issued')->sum('balance_cents'),
             'overdue' => (int) Invoice::where('business_id', $b->id)->where('status', 'issued')->where('balance_cents', '>', 0)->whereDate('due_date', '<', $b->localToday())->sum('balance_cents'),
             'overdue_count' => Invoice::where('business_id', $b->id)->where('status', 'issued')->where('balance_cents', '>', 0)->whereDate('due_date', '<', $b->localToday())->count(),
+            'aging' => $dash->aging($b),
+            'days_to_pay' => $dash->averageDaysToPay($b),
         ] : null;
 
         return view('dashboard', [
             'from' => $from, 'to' => $to, 'preset' => $preset,
             'metrics' => $metrics,
+            'previous' => $previous,
+            'trend' => $metrics ? $dash->monthlyTrend($b) : null,
+            'topClients' => $ctx->can('payments.view') ? $dash->topClients($b) : [],
+            'revenue' => $ctx->can('recurring.view') ? app(\App\Services\Recurring\RecurringRevenue::class)->summary($b) : null,
             'ar' => $ar,
             'claims' => $ctx->can('payments.view') ? PaymentClaim::with('invoice.client')->where('business_id', $b->id)->whereIn('status', ['reported', 'clarification_requested'])->latest()->limit(8)->get() : collect(),
             'awaitingSignature' => $ctx->can('contracts.view') ? Contract::with('client')->where('business_id', $b->id)->whereIn('status', ['sent', 'partially_signed'])->latest()->limit(8)->get() : collect(),

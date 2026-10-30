@@ -70,6 +70,7 @@ class PublicContractController extends Controller
             'business' => $business,
             'html' => $v->source_document_id ? null : ContractService::toHtml($v->snapshot['rendered'] ?? ''),
             'signing' => $signing,
+            'requireCode' => (bool) (\App\Models\Contract::find($v->contract_id)?->require_email_code ?? true),
             'consent' => SignatureService::CONSENT_TEXT,
             'logo' => app(DocumentStore::class)->dataUri($business->logo),
             'accent' => $business->brand('accent'),
@@ -150,7 +151,7 @@ class PublicContractController extends Controller
             'signature_data' => ['nullable', 'string', 'max:400000'],
             'document_sha256' => ['required', 'string', 'size:64'],
         ]);
-        $this->sig->sign($v, $r, $data + ['consent' => true, 'authority' => true]);
+        $this->sig->sign($v, $r, $data + ['consent' => true, 'authority' => true], $this->signMethod($v, $r));
         // Completion revokes signing links; hand this browser the signer's new view link so they land on their copy.
         $view = PublicToken::where('business_id', $r->business_id)->where('purpose', 'contract_view')
             ->where('contract_recipient_id', $r->id)->whereNull('revoked_at')->where('expires_at', '>', now())->latest('id')->first();
@@ -165,6 +166,15 @@ class PublicContractController extends Controller
         $this->sig->decline($v, $r, $request->validate(['reason' => ['required', 'string', 'max:1000']])['reason']);
 
         return redirect('/c/r/'.$r->id)->with('status', 'You declined this agreement. The sender has been notified.');
+    }
+
+    /** Agreements can waive the one-time code; a recent verification is still recorded as the stronger method. */
+    private function signMethod(ContractVersion $v, ContractRecipient $r): string
+    {
+        $verified = $r->verified_at && $r->verified_at->gt(now()->subMinutes(30));
+        $required = (bool) (\App\Models\Contract::find($v->contract_id)?->require_email_code ?? true);
+
+        return $verified || $required ? 'email_otp' : 'email_link';
     }
 
     private function mask(string $email): string

@@ -19,6 +19,9 @@
   .btn-danger { @apply border-red-700 bg-white text-red-700 hover:bg-red-50; }
   .btn-ghost { @apply border-transparent bg-transparent shadow-none hover:bg-slate-100; }
   .btn-sm { @apply px-2 py-1 text-xs; }
+  .btn-lg { @apply px-5 py-3 text-base; }
+  .summary-btn { @apply flex w-full cursor-pointer list-none items-center justify-center gap-3 rounded-lg border border-brand-700 bg-brand-700 px-5 py-3.5 text-base font-semibold text-white shadow-md transition hover:brightness-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 sm:w-auto sm:inline-flex; }
+  .summary-btn::-webkit-details-marker { display: none; }
   .card { @apply rounded-lg border border-slate-200 bg-white shadow-sm; }
   .card-body { @apply p-4 sm:p-5; }
   .card-head { @apply flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 sm:px-5; }
@@ -87,4 +90,16 @@
   .prose-doc th, .prose-doc td { @apply border border-slate-300 px-2 py-1 text-left align-top; }
   .prose-doc > :first-child { @apply mt-0; }
   .sr-only-focusable:not(:focus) { @apply sr-only; }
+  .panel { @apply rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-900/5 sm:p-6; }
+  .panel-label { @apply text-xs font-medium uppercase tracking-wider text-slate-500; }
+  .panel-title { @apply text-base font-semibold text-slate-900; }
+  .pill { @apply inline-flex items-center gap-2 rounded-full bg-white px-3.5 py-1.5 text-sm text-slate-600 no-underline shadow-sm ring-1 ring-slate-900/5 transition hover:ring-slate-300; }
+  .seg { @apply inline-flex whitespace-nowrap rounded-xl bg-slate-200/60 p-1; }
+  .seg-item { @apply rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 no-underline transition hover:text-slate-900; }
+  .seg-active { @apply bg-white text-slate-900 shadow-sm; }
+  .trend { @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums; }
+  .trend-up { @apply bg-emerald-50 text-emerald-700; }
+  .trend-down { @apply bg-red-50 text-red-700; }
+  .kpi { @apply flex flex-col gap-1.5 px-5 py-5 no-underline transition hover:bg-slate-50/70 sm:px-6 lg:border-l lg:border-slate-100 lg:first:border-l-0; }
+  .kpi-value { @apply text-xl font-semibold tracking-tight tabular-nums text-slate-900 sm:text-2xl; }
 }

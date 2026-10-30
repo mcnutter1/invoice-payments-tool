@@ -79,6 +79,7 @@ class ContractController extends Controller
             'value_cap' => ['nullable', 'numeric', 'min:0'],
             'cap_behavior' => ['nullable', Rule::in(['warn', 'block'])],
             'signing_order' => ['required', Rule::in(['parallel', 'sequential'])],
+            'require_email_code' => ['nullable', 'boolean'],
             'signers' => ['nullable', 'array', 'max:10'],
             'signers.*.name' => ['nullable', 'string', 'max:120'],
             'signers.*.email' => ['nullable', 'email'],
@@ -273,10 +274,23 @@ class ContractController extends Controller
         abort_unless($r && $r->status === 'sent', 404);
 
         return view('contracts.countersign', ['contract' => $c, 'version' => $v, 'recipient' => $r, 'consent' => SignatureService::CONSENT_TEXT,
-            'html' => $v->source_document_id ? null : ContractService::toHtml($v->snapshot['rendered'] ?? '')]);
+            'html' => $v->source_document_id ? null : ContractService::toHtml($v->snapshot['rendered'] ?? ''),
+            'savedSignature' => $this->savedSignatureDoc() ? app(DocumentStore::class)->dataUri($this->savedSignatureDoc()) : null]);
     }
 
-    public function countersign(Request $request, int $id, SignatureService $sig)
+    private function myMembership(): Membership
+    {
+        return Membership::where('business_id', $this->biz()->id)->where('user_id', $this->ctx()->user->id)->where('status', 'active')->firstOrFail();
+    }
+
+    private function savedSignatureDoc(): ?PrivateDocument
+    {
+        $id = $this->myMembership()->signature_document_id;
+
+        return $id ? PrivateDocument::where('business_id', $this->biz()->id)->where('mime', 'image/png')->find($id) : null;
+    }
+
+    public function countersign(Request $request, int $id, SignatureService $sig, DocumentStore $docs)
     {
         $c = $this->contract($id);
         $v = $c->currentVersion;
@@ -284,12 +298,32 @@ class ContractController extends Controller
         abort_unless($r, 404);
         $data = $request->validate([
             'typed_name' => ['required', 'string', 'max:120'], 'typed_title' => ['nullable', 'string', 'max:120'],
-            'consent' => ['accepted'], 'authority' => ['accepted'], 'signature_kind' => ['required', Rule::in(['type', 'draw'])],
+            'consent' => ['accepted'], 'authority' => ['accepted'], 'signature_kind' => ['required', Rule::in(['type', 'draw', 'saved'])],
             'signature_data' => ['nullable', 'string', 'max:400000'], 'document_sha256' => ['required', 'string', 'size:64'],
+            'save_signature' => ['nullable', 'boolean'],
         ]);
+        if ($data['signature_kind'] === 'saved') {
+            $saved = $this->savedSignatureDoc() ?? throw new DomainException('No saved signature found. Draw or type your signature.');
+            $data['signature_kind'] = 'draw';
+            $data['signature_data'] = 'data:image/png;base64,'.base64_encode($saved->contents());
+        }
         $sig->sign($v, $r, $data + ['consent' => true, 'authority' => true], 'authenticated_session');
+        if ($request->boolean('save_signature') && $request->input('signature_kind') === 'draw'
+            && preg_match('#^data:image/png;base64,([A-Za-z0-9+/=]+)$#', (string) $data['signature_data'], $m)) {
+            $doc = $docs->put($this->biz(), 'saved_signature', 'my-signature.png', base64_decode($m[1]), 'image/png');
+            $this->myMembership()->update(['signature_document_id' => $doc->id]);
+            Audit::log($this->biz(), 'member.signature_saved', $this->myMembership());
+        }
 
         return $this->to('/contracts/'.$id, 'Countersigned.');
+    }
+
+    public function forgetSignature()
+    {
+        $this->myMembership()->update(['signature_document_id' => null]);
+        Audit::log($this->biz(), 'member.signature_removed', $this->myMembership());
+
+        return back()->with('status', 'Saved signature removed.');
     }
 
     public function templates()

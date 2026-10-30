@@ -19,6 +19,7 @@ class Contract extends Model
         'term_end_date' => 'date',
         'terminated_at' => 'datetime',
         'externally_signed' => 'boolean',
+        'require_email_code' => 'boolean',
     ];
 
     protected static function booted(): void

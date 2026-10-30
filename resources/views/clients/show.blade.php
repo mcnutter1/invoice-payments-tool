@@ -17,11 +17,23 @@
         @endif
     </div>
 </div>
+@if ($revenue || $values)
+<div class="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+    @if ($revenue)
+    <div class="metric"><div class="metric-label">Annual recurring revenue</div><div class="metric-value">@money($revenue['arr'])</div><div class="metric-note">@money($revenue['mrr'])/mo · {{ $revenue['count'] }} active plan(s)</div></div>
+    @endif
+    @if ($values)
+    <div class="metric"><div class="metric-label">Lifetime billed</div><div class="metric-value">@money($values['billed'])</div><div class="metric-note">Issued invoices, incl. tax</div></div>
+    @if ($values['collected'] !== null)<div class="metric"><div class="metric-label">Collected</div><div class="metric-value">@money($values['collected'])</div><div class="metric-note">Payments received</div></div>@endif
+    <div class="metric"><div class="metric-label">Open balance</div><div class="metric-value">@money($balance)</div><div @class(['metric-note', 'font-medium text-red-700' => $values['overdue'] > 0])>{{ $values['overdue'] > 0 ? \App\Support\Money::format($values['overdue']).' overdue' : 'Nothing overdue' }}</div></div>
+    @endif
+</div>
+@endif
 <div class="mt-6 grid gap-4 lg:grid-cols-3">
     <div class="space-y-4">
         <div class="card card-body">
             <dl class="dl">
-                <dt>Open balance</dt><dd class="font-semibold">@money($balance)</dd>
+                @if (! $values)<dt>Open balance</dt><dd class="font-semibold">@money($balance)</dd>@endif
                 @if ($credit > 0)<dt>Unapplied credit</dt><dd>@money($credit)</dd>@endif
                 <dt>Email</dt><dd>{{ $client->email ?: '—' }}</dd>
                 <dt>Phone</dt><dd>{{ $client->phone ?: '—' }}</dd>
@@ -92,9 +104,15 @@
         </div></div>
         @endif
         @if ($ctx->can('recurring.view') && $schedules->isNotEmpty())
-        <div class="card"><div class="card-head"><h2>Recurring plans</h2></div><div class="card-body text-sm space-y-1">
-            @foreach ($schedules as $s)<div class="flex justify-between"><a href="{{ $bu }}/recurring/{{ $s->id }}">{{ $s->name }}</a><span>Next: {{ $s->next_run_date?->format('M j, Y') ?? '—' }} @include('partials.status', ['s' => $s->status])</span></div>@endforeach
-        </div></div>
+        <div class="card overflow-x-auto"><div class="card-head"><h2>Recurring plans</h2>@if($ctx->can('recurring.manage'))<a class="btn btn-sm" href="{{ $bu }}/recurring/new?client={{ $client->id }}">+ New plan</a>@endif</div>
+            <table class="tbl"><thead><tr><th>Plan</th><th>Next invoice</th><th class="num">Annual value</th><th>Status</th></tr></thead><tbody>
+            @foreach ($schedules as $s)
+                <tr><td><a href="{{ $bu }}/recurring/{{ $s->id }}">{{ $s->name }}</a><div class="text-xs text-slate-500">Every {{ $s->interval > 1 ? $s->interval.' ' : '' }}{{ $s->cadence }}{{ $s->interval > 1 ? 's' : '' }}</div></td>
+                    <td>{{ $s->next_run_date?->format('M j, Y') ?? '—' }}</td>
+                    <td @class(['num', 'text-slate-400' => $s->status !== 'active'])>@money($revenue['by_schedule'][$s->id] ?? 0)</td>
+                    <td>@include('partials.status', ['s' => $s->status])</td></tr>
+            @endforeach
+            </tbody></table></div>
         @endif
         @if ($activity->isNotEmpty())
         <div class="card"><div class="card-head"><h2>Activity</h2></div><ul class="card-body space-y-1 text-sm">

@@ -39,7 +39,7 @@
                 <td>Name: {{ ! empty($signed) && $r->typed_name ? $r->typed_name : $r->name }}{{ (! empty($signed) && $r->typed_title) ? ', '.$r->typed_title : ($r->title ? ', '.$r->title : '') }}</td>
                 <td style="text-align:right">Date: {{ ! empty($signed) && $r->signed_at ? $r->signed_at->utc()->format('Y-m-d H:i').' UTC' : '________________' }}</td>
             </tr></table>
-            @if (! empty($signed) && $r->signed_at)<div class="muted">Signed electronically · {{ $r->signature_kind === 'draw' ? 'drawn' : 'typed' }} signature · email verified {{ $r->verified_email ?? '(authenticated session)' }} · see signature certificate</div>@endif
+            @if (! empty($signed) && $r->signed_at)<div class="muted">Signed electronically · {{ $r->signature_kind === 'draw' ? 'drawn' : 'typed' }} signature · {{ $r->verificationLabel() }} · see signature certificate</div>@endif
         </div>
     @endforeach
 </div>

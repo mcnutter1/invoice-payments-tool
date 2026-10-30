@@ -36,6 +36,15 @@ abstract class Controller
         }
     }
 
+    /** Combine picked contact checkboxes (recipient_emails[]) and typed addresses into the `recipients` field. */
+    protected function mergeRecipients(Request $request): void
+    {
+        $picked = array_filter((array) $request->input('recipient_emails', []), 'is_string');
+        $typed = preg_split('/[,;\s]+/', (string) $request->input('recipients', '')) ?: [];
+        $all = array_values(array_unique(array_filter(array_map(fn ($e) => strtolower(trim((string) $e)), array_merge($picked, $typed)))));
+        $request->merge(['recipients' => implode(', ', $all)]);
+    }
+
     protected function to(string $path, ?string $message = null)
     {
         $r = redirect('/b/'.$this->biz()->ulid.$path);

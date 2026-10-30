@@ -27,6 +27,22 @@ class Client extends Model
         return $primary?->email ?: $this->email;
     }
 
+    /** Emailable contacts for recipient pickers; the primary billing contact (or client email) is flagged as the default. */
+    public function recipientOptions(): array
+    {
+        $out = [];
+        foreach ($this->contacts->sortByDesc('is_primary_billing') as $ct) {
+            if (! $ct->email) continue;
+            $email = strtolower($ct->email);
+            $out[$email] ??= ['email' => $email, 'label' => $ct->name.($ct->title ? ' · '.$ct->title : ''), 'billing' => (bool) $ct->is_primary_billing];
+        }
+        if ($this->email && ! isset($out[strtolower($this->email)])) {
+            $out[strtolower($this->email)] = ['email' => strtolower($this->email), 'label' => 'Client email', 'billing' => ! collect($out)->contains('billing', true)];
+        }
+
+        return array_values($out);
+    }
+
     public function billingAddressLines(): array
     {
         return array_values(array_filter([

@@ -69,7 +69,7 @@
     tbody.addEventListener('click', (e) => {
       const rm = e.target.closest('[data-remove-line]');
       if (!rm) return;
-      if ($$('tr[data-line]', tbody).length > 1) rm.closest('tr').remove(); else $$('input, textarea', rm.closest('tr')).forEach((i) => { if (i.type !== 'hidden') i.value = ''; });
+      if (table.hasAttribute('data-allow-empty') || $$('tr[data-line]', tbody).length > 1) rm.closest('tr').remove(); else $$('input, textarea', rm.closest('tr')).forEach((i) => { if (i.type !== 'hidden') i.value = ''; });
       onChange && onChange();
     });
     scope.addEventListener('keydown', (e) => { if (e.altKey && e.key === 'Enter') { e.preventDefault(); add(); } });
@@ -148,6 +148,46 @@
       editor.addEventListener('submit', () => { dirty = false; });
     }
     recalc();
+  }
+
+  // ---------- Recurring schedule form ----------
+  {
+  const rec = $('[data-recurring-form]');
+  if (rec) {
+    const catalog = JSON.parse($('#catalog-data')?.textContent || '{}');
+    const perYear = { week: 52, month: 12, quarter: 4, year: 1 };
+    const out = (k, v) => { const el = $('[data-out="' + k + '"]', rec); if (el) el.textContent = v; };
+    const recalc = () => {
+      const rows = $$('tr[data-line]', rec);
+      $('[data-lines-wrap]', rec).hidden = rows.length === 0;
+      $('[data-lines-empty]', rec).hidden = rows.length > 0;
+      let period = 0;
+      rows.forEach((r) => { const a = halfUp(num($('[data-qty]', r)?.value) * num($('[data-price]', r)?.value) * 100); period += a; const c = $('[data-amount]', r); if (c) c.textContent = money(a); });
+      const interval = Math.max(1, Math.round(num($('[data-interval]', rec)?.value) || 1));
+      out('period', money(period)); out('annual', money(Math.round(period * (perYear[$('[data-cadence]', rec)?.value] || 12) / interval)));
+    };
+    const wireRow = (row) => {
+      if (!row) return recalc();
+      $('[data-product]', row)?.addEventListener('change', (e) => {
+        const p = catalog[e.target.value]; if (!p) return recalc();
+        $('[data-name]', row).value = p.name || '';
+        if (!$('[data-desc]', row).value) $('[data-desc]', row).value = p.description || '';
+        $('[data-price]', row).value = p.price;
+        const tax = $('[data-tax]', row); if (tax) tax.value = p.tax_rate_id || '';
+        recalc();
+      });
+      recalc();
+    };
+    wireLines(rec, wireRow);
+    $$('tr[data-line]', rec).forEach(wireRow);
+    rec.addEventListener('input', recalc); rec.addEventListener('change', recalc);
+    rec.addEventListener('submit', (e) => {
+      if (!$$('tr[data-line]', rec).some((r) => $('[data-name]', r).value.trim() || $('[data-product]', r).value)) {
+        e.preventDefault(); alert('Add at least one service or product.');
+      }
+    }, true);
+    recalc();
+  }
   }
 
   // ---------- Expense lines ----------
@@ -235,6 +275,36 @@
       });
     });
   }
+
+  // ---------- Selects that depend on the chosen client (agreements) ----------
+  $$('[data-client-filtered]').forEach((sel) => {
+    const src = $(sel.dataset.clientFiltered); if (!src) return;
+    const apply = () => {
+      Array.from(sel.options).forEach((o) => { if (!o.dataset.client) return; const ok = o.dataset.client === src.value; o.hidden = !ok; o.disabled = !ok; });
+      if (sel.selectedOptions[0]?.disabled) sel.value = '';
+    };
+    src.addEventListener('change', apply); apply();
+  });
+
+  // ---------- Recipient pickers follow the chosen client ----------
+  $$('[data-recipient-picker][data-client-select]').forEach((picker) => {
+    const src = $(picker.dataset.clientSelect); const box = $('[data-recipient-options]', picker);
+    if (!src || !box) return;
+    const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text) n.textContent = text; return n; };
+    src.addEventListener('change', () => {
+      let opts = [];
+      try { opts = JSON.parse(src.selectedOptions[0]?.dataset.recipients || '[]'); } catch (_) { opts = []; }
+      box.replaceChildren();
+      if (!opts.length) { box.append(el('p', 'px-1 py-1 text-xs text-slate-500', 'This client has no contacts with an email address. Add one in the client profile, or type an address below.')); return; }
+      opts.forEach((o) => {
+        const label = el('label', 'flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded px-1 py-1 text-sm hover:bg-slate-50');
+        const cb = el('input', 'check'); cb.type = 'checkbox'; cb.name = 'recipient_emails[]'; cb.value = o.email; cb.checked = !!o.billing;
+        label.append(cb, el('span', 'font-medium text-slate-800', o.label), el('span', 'text-slate-500', o.email));
+        if (o.billing) label.append(el('span', 'chip chip-blue', 'Billing'));
+        box.append(label);
+      });
+    });
+  });
 
   // ---------- Report range ----------
   const range = $('[data-range]');
@@ -356,7 +426,12 @@
     $('[data-sig-clear]', form).addEventListener('click', clear);
     window.addEventListener('resize', fit);
     const kinds = $$('[data-sig-kind]', form);
-    const sync = () => { const draw = kinds.find((k) => k.checked)?.value === 'draw'; $('[data-sig-draw]', form).hidden = !draw; $('[data-sig-type]', form).hidden = draw; if (draw) requestAnimationFrame(fit); };
+    const sync = () => {
+      const kind = kinds.find((k) => k.checked)?.value || 'draw';
+      $('[data-sig-draw]', form).hidden = kind !== 'draw'; $('[data-sig-type]', form).hidden = kind !== 'type';
+      const saved = $('[data-sig-saved]', form); if (saved) saved.hidden = kind !== 'saved';
+      if (kind === 'draw') requestAnimationFrame(fit);
+    };
     kinds.forEach((k) => k.addEventListener('change', sync)); sync();
     form.addEventListener('submit', (e) => {
       if (kinds.find((k) => k.checked)?.value === 'draw') {

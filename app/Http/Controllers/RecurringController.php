@@ -30,6 +30,7 @@ class RecurringController extends Controller
         return view('recurring.index', [
             'schedules' => $schedules,
             'amounts' => $schedules->mapWithKeys(fn ($s) => [$s->id => $this->calc->scheduleAmountCents($s)]),
+            'revenue' => app(\App\Services\Recurring\RecurringRevenue::class)->summary($b, null, $schedules),
             'review' => ScheduleRun::with('schedule.client')->where('business_id', $b->id)->where('status', 'needs_review')->orderBy('period_date')->get(),
         ]);
     }
@@ -40,7 +41,7 @@ class RecurringController extends Controller
 
         return [
             'schedule' => $s,
-            'clients' => Client::where('business_id', $b->id)->where('status', 'active')->orderBy('display_name')->get(['id', 'display_name']),
+            'clients' => Client::with('contacts')->where('business_id', $b->id)->where('status', 'active')->orderBy('display_name')->get(),
             'contracts' => Contract::where('business_id', $b->id)->whereNotIn('status', ['voided'])->get(['id', 'number', 'title', 'client_id', 'status']),
             'products' => Product::where('business_id', $b->id)->where('active', true)->orderBy('name')->get(),
             'taxRates' => TaxRate::where('business_id', $b->id)->where('active', true)->get(),
@@ -55,6 +56,7 @@ class RecurringController extends Controller
     private function validated(Request $request): array
     {
         $b = $this->biz();
+        $this->mergeRecipients($request);
 
         return $request->validate([
             'name' => ['required', 'string', 'max:200'],
@@ -82,7 +84,7 @@ class RecurringController extends Controller
             'lines.*.quantity' => ['nullable', 'numeric', 'min:0'],
             'lines.*.unit_price' => ['nullable', 'numeric', 'min:0'],
             'lines.*.tax_rate_id' => ['nullable', 'integer'],
-        ]);
+        ], ['lines.required' => 'Add at least one service or product.', 'lines.min' => 'Add at least one service or product.']);
     }
 
     public function store(Request $request)
@@ -102,6 +104,7 @@ class RecurringController extends Controller
             'schedule' => $s,
             'upcoming' => $this->calc->upcoming($s, 3),
             'amount' => $this->calc->scheduleAmountCents($s),
+            'annual' => app(\App\Services\Recurring\RecurringRevenue::class)->summary($this->biz(), null, collect([$s]))['by_schedule'][$s->id] ?? 0,
             'activity' => \App\Models\AuditEvent::with('actor')->where('business_id', $s->business_id)->where('object_type', 'RecurringSchedule')->where('object_id', $s->id)->latest('id')->limit(30)->get(),
         ]);
     }

@@ -53,6 +53,12 @@ class AppServiceProvider extends ServiceProvider
     {
         Blade::directive('money', fn ($expr) => "<?php echo e(\\App\\Support\\Money::format($expr)); ?>");
 
+        \Illuminate\Support\Facades\View::composer('layouts.app', function ($view) {
+            if ($view->offsetExists('breadcrumbs')) return;
+            $biz = app(Context::class)->business;
+            $view->with('breadcrumbs', $biz ? \App\Support\Breadcrumbs::for($biz, request()->path()) : []);
+        });
+
         RateLimiter::for('public', fn (Request $r) => Limit::perMinute(30)->by($r->ip()));
         RateLimiter::for('tracking', fn (Request $r) => Limit::perMinute(240)->by($r->ip()));
         RateLimiter::for('public-token', fn (Request $r) => Limit::perMinute(20)->by($r->ip()));

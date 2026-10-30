@@ -92,6 +92,7 @@ class PublicInvoiceController extends Controller
             'claims' => $claims,
             'openClaim' => $claims->firstWhere('status', 'reported'),
             'agreement' => $agreement,
+            'agreementTitle' => $invoice->contractVersion?->title ?? $invoice->contract?->title,
             'canReport' => $t->allows('report_payment') && $invoice->status === 'issued' && $invoice->balance_cents > 0,
             'reviewing' => (bool) $suppressed,
         ]);
