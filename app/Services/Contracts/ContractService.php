@@ -41,6 +41,8 @@ class ContractService
     public const MERGE_FIELDS = [
         'business.legal_name', 'business.name', 'business.address', 'business.email', 'business.phone',
         'client.legal_name', 'client.name', 'client.address', 'client.email',
+        'signer.name', 'signer.email', 'signer.title', 'signer_2.name', 'signer_2.email', 'signer_2.title',
+        'countersigner.name', 'countersigner.email', 'countersigner.title',
         'agreement.title', 'agreement.number', 'agreement.effective_date', 'agreement.term_start_date', 'agreement.term_end_date', 'agreement.term',
         'agreement.scope', 'agreement.fees', 'agreement.payment_terms_days', 'agreement.committed_value',
         'agreement.milestones', 'agreement.recurring_fee',
@@ -68,6 +70,16 @@ class ContractService
         }
         $monthly = $contract->billing_monthly_cents > 0 ? Money::format($contract->billing_monthly_cents) : '';
         $billingStart = $contract->billing_start_date ?? $contract->term_start_date ?? $contract->effective_date;
+        $signers = collect($input['signers'] ?? [])->filter(fn ($s) => ! empty($s['name']) && ! empty($s['email']))->values();
+        foreach (['signer' => 0, 'signer_2' => 1] as $key => $i) {
+            $indexed[$key.'.name'] = trim((string) ($signers[$i]['name'] ?? ''));
+            $indexed[$key.'.email'] = strtolower(trim((string) ($signers[$i]['email'] ?? '')));
+            $indexed[$key.'.title'] = trim((string) ($signers[$i]['title'] ?? ''));
+        }
+        $counter = ! empty($input['countersigner_user_id']) ? User::find($input['countersigner_user_id']) : null;
+        $indexed['countersigner.name'] = $counter?->label() ?? '';
+        $indexed['countersigner.email'] = (string) ($counter?->email ?? '');
+        $indexed['countersigner.title'] = $counter ? trim((string) ($input['countersigner_title'] ?? '')) : '';
 
         return $indexed + [
             'business.legal_name' => $b->legal_name,

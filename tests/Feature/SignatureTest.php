@@ -179,6 +179,9 @@ class SignatureTest extends TestCase
         $this->assertSame('$2,500.50', $merge['agreement.milestone_2_amount']);
         $this->assertSame(\Illuminate\Support\Carbon::parse($future)->format('F j, Y'), $merge['agreement.milestone_2_date']);
         $this->assertSame('$3,500.50', $merge['agreement.milestone_total']);
+        $this->assertSame('Pat Signer', $merge['signer.name']);
+        $this->assertSame('pat@example.test', $merge['signer.email']);
+        $this->assertSame('', $merge['signer_2.name']);
         [$rendered, $missing] = app(ContractService::class)->render('{{agreement.milestone_1_name}} {{ agreement.milestone_2_amount }}', $merge);
         $this->assertSame('Kickoff $2,500.50', $rendered);
         $this->assertSame([], $missing);
