@@ -1,4 +1,4 @@
-@extends('layouts.public', ['accent' => $accent])
+@extends('layouts.public', ['accent' => $accent, 'wide' => true])
 @section('title', 'Preview · '.$version->title)
 @section('content')
 @php $bu = '/b/'.$business->ulid; $signers = $version->recipients->whereIn('role', ['client_signer', 'countersigner'])->sortBy('sign_order'); @endphp

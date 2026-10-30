@@ -17,7 +17,7 @@
 </head>
 <body class="min-h-screen bg-slate-100">
 <div class="brand-bar h-1.5 bg-brand-700"></div>
-<main id="main" class="mx-auto max-w-3xl px-3 py-5 sm:px-6 sm:py-10">
+<main id="main" class="mx-auto {{ ($wide ?? false) ? 'max-w-5xl' : 'max-w-3xl' }} px-3 py-5 sm:px-6 sm:py-10">
     @include('partials.flash')
     @yield('content')
     <footer class="mt-10 flex flex-col items-center gap-1 text-center text-xs text-slate-500">

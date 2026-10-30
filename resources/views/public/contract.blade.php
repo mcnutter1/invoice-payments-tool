@@ -1,4 +1,4 @@
-@extends('layouts.public', ['accent' => $accent])
+@extends('layouts.public', ['accent' => $accent, 'wide' => true])
 @section('title', $version->title.' — '.$business->name())
 @section('content')
 @php
@@ -50,7 +50,7 @@
 @endcomponent
 
 @if ($signing)
-<section class="mt-6 space-y-4">
+<section class="mx-auto mt-6 max-w-3xl space-y-4">
     @if (! $readyToSign)
         <div class="card card-body">
             <h2>Verify your email</h2>

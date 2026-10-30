@@ -9,8 +9,8 @@
     <div class="doc-bar"></div>
     <header class="doc-head">
         <div class="min-w-0">
-            @if ($logo)<img src="{{ $logo }}" alt="{{ $business->name() }}" class="h-12 max-w-[11rem] object-contain">
-            @else<div class="text-lg font-semibold" style="color: {{ $ac }}">{{ $business->name() }}</div>@endif
+            @if ($logo)<img src="{{ $logo }}" alt="{{ $business->name() }}" class="h-10 max-w-[8rem] object-contain sm:h-12 sm:max-w-[11rem]">
+            @else<div class="break-words text-base font-semibold sm:text-lg" style="color: {{ $ac }}">{{ $business->name() }}</div>@endif
         </div>
         <div class="shrink-0 text-right">
             <div class="doc-kicker">Agreement</div>
@@ -40,7 +40,7 @@
         <div class="col-span-2 sm:col-span-1"><dt>Agreement</dt><dd>{{ $contract->number }} · v{{ $version->version }}</dd></div>
     </dl>
     @if ($html)
-        <div @class(['prose-doc doc-body', 'max-h-[65vh] overflow-auto' => $scroll ?? false]) @if($scroll ?? false) tabindex="0" @endif aria-label="Agreement text">{!! $html !!}</div>
+        <div @class(['prose-doc doc-body', 'sm:max-h-[75vh] sm:overflow-auto' => $scroll ?? false]) @if($scroll ?? false) tabindex="0" @endif aria-label="Agreement text">{!! $html !!}</div>
     @else
         <p class="doc-body">Open the PDF to review the full document.</p>
     @endif
