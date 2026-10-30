@@ -135,7 +135,7 @@ This Service Agreement ("Agreement") is entered into between **{{business.legal_
 {{agreement.scope}}
 
 ## 2. Term
-This Agreement begins on {{agreement.effective_date}} and continues until {{agreement.term_end_date}} unless terminated earlier under Section 6.
+This Agreement's term runs {{agreement.term}}, unless terminated earlier under Section 6.
 
 ## 3. Fees
 {{agreement.fees}}

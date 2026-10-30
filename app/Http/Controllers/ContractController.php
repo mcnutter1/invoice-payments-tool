@@ -70,7 +70,9 @@ class ContractController extends Controller
             'template_id' => ['nullable', 'integer'],
             'body' => ['nullable', 'string', 'max:100000'],
             'effective_date' => ['nullable', 'date'],
-            'term_end_date' => ['nullable', 'date', 'after_or_equal:effective_date'],
+            'term_start_date' => ['nullable', 'date'],
+            'term_end_date' => ['nullable', 'date'],
+            'term_open_ended' => ['nullable', 'boolean'],
             'scope' => ['nullable', 'string', 'max:20000'],
             'fees' => ['nullable', 'string', 'max:10000'],
             'recurring_fee' => ['nullable', 'string', 'max:2000'],
@@ -90,11 +92,24 @@ class ContractController extends Controller
             'milestones.*.name' => ['nullable', 'string', 'max:200'],
             'milestones.*.amount' => ['nullable', 'numeric', 'min:0'],
             'milestones.*.due_date' => ['nullable', 'date'],
+            'milestones.*.description' => ['nullable', 'string', 'max:1000'],
+            'monthly_fee' => ['nullable', 'numeric', 'min:0'],
+            'monthly_fee_description' => ['nullable', 'string', 'max:200'],
+            'billing_start_date' => ['nullable', 'date'],
+            'billing_auto' => ['nullable', 'boolean'],
+            'billing_mode' => ['nullable', Rule::in(array_keys(\App\Services\Contracts\ContractBillingService::MODES))],
         ];
         if ($creating) $rules['client_id'] = ['required', Rule::exists('clients', 'id')->where('business_id', $b->id)];
         else $rules['client_id'] = ['nullable', Rule::exists('clients', 'id')->where('business_id', $b->id)];
 
         $data = $request->validate($rules);
+        $data['term_open_ended'] = $request->boolean('term_open_ended');
+        $data['billing_auto'] = $request->boolean('billing_auto');
+        if ($data['term_open_ended']) $data['term_end_date'] = null;
+        $termStart = $data['term_start_date'] ?? $data['effective_date'] ?? null;
+        if (! empty($data['term_end_date']) && $termStart && $data['term_end_date'] < $termStart) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['term_end_date' => 'The term end date must be on or after the term begin date.']);
+        }
         if (! empty($data['countersigner_user_id'])) {
             $ok = Membership::where('business_id', $b->id)->where('user_id', $data['countersigner_user_id'])->where('status', 'active')->exists();
             if (! $ok) throw new DomainException('Countersigner must be an active member of this business.');
@@ -248,22 +263,31 @@ class ContractController extends Controller
         return $docs->download(PrivateDocument::where('business_id', $c->business_id)->findOrFail($docId), $c->number.'-v'.$v->version.'-'.$kind.'.pdf', true);
     }
 
-    public function invoiceMilestone(int $id, int $milestone, InvoiceService $invoices)
+    public function invoiceMilestone(int $id, int $milestone, \App\Services\Contracts\ContractBillingService $billing)
     {
         $c = $this->contract($id);
         $m = ContractMilestone::where('business_id', $c->business_id)->where('contract_id', $c->id)->findOrFail($milestone);
         if ($m->invoice_id) throw new DomainException('This milestone was already invoiced.');
         if (! $c->isActiveForBilling() ) throw new DomainException('The agreement must be signed (or have a recorded billing override) before billing.');
-        $invoice = $invoices->saveDraft($this->biz(), null, [
-            'client_id' => $c->client_id,
-            'contract_version_id' => $c->currentVersion?->status === 'completed' ? $c->current_version_id : $c->versions()->where('status', 'completed')->value('id'),
-            'lines' => [[
-                'name' => $m->name, 'description' => $c->title.' — milestone', 'quantity' => '1',
-                'unit_price' => Money::toDecimalString($m->amount_cents), 'contract_milestone_id' => $m->id, 'tax_rate_id' => null,
-            ]],
-        ]);
+        $versionId = $c->currentVersion?->status === 'completed' ? $c->current_version_id : ($c->versions()->where('status', 'completed')->value('id') ?? $c->current_version_id);
+        $invoice = $billing->milestoneInvoice($c, $m, $versionId);
 
-        return $this->to('/invoices/'.$invoice->id.'/edit', 'Draft invoice created for the milestone.');
+        return $invoice->isDraft()
+            ? $this->to('/invoices/'.$invoice->id.'/edit', 'Draft invoice created for the milestone.')
+            : $this->to('/invoices/'.$invoice->id, 'Milestone invoice issued.');
+    }
+
+    public function runBilling(\App\Services\Contracts\ContractBillingService $billing, int $id)
+    {
+        $c = $this->contract($id);
+        if (! $c->isExecuted()) throw new DomainException('Invoices are created once the agreement is fully signed.');
+        if (! $c->billing_auto) $c->update(['billing_auto' => true]);
+        $out = $billing->onExecuted($c);
+        Audit::log($this->biz(), 'contract.billing_run', $c, null, $out);
+
+        return $this->to('/contracts/'.$id, $out['milestones'] || $out['schedule']
+            ? 'Billing set up: '.$out['milestones'].' milestone invoice(s)'.($out['schedule'] ? ' and the monthly schedule.' : '.')
+            : 'Billing is already up to date.');
     }
 
     public function countersignForm(int $id)

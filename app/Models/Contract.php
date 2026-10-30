@@ -17,6 +17,10 @@ class Contract extends Model
     protected $casts = [
         'effective_date' => 'date',
         'term_end_date' => 'date',
+        'term_start_date' => 'date',
+        'term_open_ended' => 'boolean',
+        'billing_start_date' => 'date',
+        'billing_auto' => 'boolean',
         'terminated_at' => 'datetime',
         'externally_signed' => 'boolean',
         'require_email_code' => 'boolean',
@@ -46,9 +50,20 @@ class Contract extends Model
         if (! $this->isExecuted() && ! $this->billing_override_reason) return false;
         if ($this->terminated_at) return false;
         if ($this->effective_date && $on->lt($this->effective_date)) return false;
+        if ($this->term_start_date && $on->lt($this->term_start_date)) return false;
         if ($this->term_end_date && $on->gt($this->term_end_date)) return false;
 
         return true;
+    }
+
+    /** Human-readable term, e.g. "Jan 1, 2027 – Dec 31, 2027" or "Jan 1, 2027 – open-ended". */
+    public function termLabel(string $format = 'M j, Y'): ?string
+    {
+        $start = $this->term_start_date ?? $this->effective_date;
+        $end = $this->term_end_date?->format($format) ?? ($this->term_open_ended ? 'open-ended' : null);
+        if (! $start && ! $end) return null;
+
+        return ($start?->format($format) ?? 'Start not set').' – '.($end ?? 'end not set');
     }
 
     public function invoicedCents(): int

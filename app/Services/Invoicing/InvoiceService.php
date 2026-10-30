@@ -397,6 +397,7 @@ class InvoiceService
             $invoice->taxLines()->delete();
             \App\Models\ScheduleRun::where('invoice_id', $invoice->id)->update(['invoice_id' => null, 'status' => 'skipped']);
             \App\Models\ExpenseLine::where('business_id', $invoice->business_id)->where('billed_invoice_id', $invoice->id)->update(['billed_invoice_id' => null]);
+            \App\Models\ContractMilestone::where('business_id', $invoice->business_id)->where('invoice_id', $invoice->id)->update(['status' => 'pending', 'invoice_id' => null]);
             $invoice->delete();
             Audit::log($invoice->business_id, 'invoice.draft_deleted', $invoice);
         });

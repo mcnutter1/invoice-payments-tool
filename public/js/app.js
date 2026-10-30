@@ -249,6 +249,19 @@
     kind.addEventListener('change', sync); sync();
   }
 
+  // ---------- Contract billing milestones ----------
+  {
+    const ms = $('[data-milestones]');
+    if (ms) {
+      const sync = () => {
+        const n = $$('tr[data-line]', ms).length;
+        $('[data-lines-wrap]', ms).hidden = n === 0;
+        $('[data-lines-empty]', ms).hidden = n > 0;
+      };
+      wireLines(ms, sync);
+    }
+  }
+
   // ---------- Contract form: client signer contacts ----------
   const signerSrc = $('[data-signer-source]');
   const slots = $$('[data-signer-slot]');
@@ -266,12 +279,17 @@
       try { contacts = JSON.parse(signerSrc.selectedOptions[0]?.dataset.contacts || '[]'); } catch (_) { contacts = []; }
       slots.forEach((slot, idx) => {
         const pick = $('[data-signer-pick]', slot); if (!pick) return;
-        pick.replaceChildren(new Option(contacts.length ? 'Pick a signer contact…' : 'No signer contacts on this client', ''));
-        contacts.forEach((c, k) => { const o = new Option(c.name + ' — ' + c.email, String(k)); o.dataset.name = c.name; o.dataset.email = c.email; o.dataset.title = c.title || ''; pick.add(o); });
+        pick.replaceChildren(new Option(contacts.length ? 'Pick a client contact…' : 'No contacts with an email on this client', ''));
+        const groups = {};
+        contacts.forEach((c, k) => {
+          const label = c.signer ? 'Signers' : 'Other contacts';
+          if (!groups[label]) { groups[label] = document.createElement('optgroup'); groups[label].label = label; pick.append(groups[label]); }
+          const o = new Option(c.name + ' — ' + c.email, String(k)); o.dataset.name = c.name; o.dataset.email = c.email; o.dataset.title = c.title || ''; groups[label].append(o);
+        });
         // A different client's signers must not carry over.
         if (changed) fillSlot(slot, null);
         const email = $('[data-signer-field="email"]', slot);
-        if (idx === 0 && contacts[0] && !email.value) { fillSlot(slot, contacts[0]); pick.value = '0'; }
+        if (idx === 0 && contacts[0] && contacts[0].signer && !email.value) { fillSlot(slot, contacts[0]); pick.value = '0'; }
       });
     });
   }
@@ -304,6 +322,13 @@
         box.append(label);
       });
     });
+  });
+
+  // ---------- Contract term: open-ended disables the end date ----------
+  $$('[data-open-ended]').forEach((cb) => {
+    const end = $('[data-term-end]', cb.closest('[data-term]')); if (!end) return;
+    const sync = () => { end.disabled = cb.checked; if (cb.checked) end.value = ''; };
+    cb.addEventListener('change', sync); sync();
   });
 
   // ---------- Report range ----------

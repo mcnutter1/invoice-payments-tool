@@ -24,6 +24,7 @@ use App\Support\Context;
 use App\Support\Money;
 use App\Support\RichText;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class ContractService
@@ -40,17 +41,35 @@ class ContractService
     public const MERGE_FIELDS = [
         'business.legal_name', 'business.name', 'business.address', 'business.email', 'business.phone',
         'client.legal_name', 'client.name', 'client.address', 'client.email',
-        'agreement.title', 'agreement.number', 'agreement.effective_date', 'agreement.term_end_date',
+        'agreement.title', 'agreement.number', 'agreement.effective_date', 'agreement.term_start_date', 'agreement.term_end_date', 'agreement.term',
         'agreement.scope', 'agreement.fees', 'agreement.payment_terms_days', 'agreement.committed_value',
         'agreement.milestones', 'agreement.recurring_fee',
+        'agreement.monthly_fee', 'agreement.monthly_fee_description', 'agreement.billing_start_date', 'agreement.milestone_total',
+        'agreement.milestone_1_name', 'agreement.milestone_1_amount', 'agreement.milestone_1_date', 'agreement.milestone_1_description',
+        'agreement.milestone_2_name', 'agreement.milestone_2_amount', 'agreement.milestone_2_date', 'agreement.milestone_2_description',
+        'agreement.milestone_3_name', 'agreement.milestone_3_amount', 'agreement.milestone_3_date', 'agreement.milestone_3_description',
+        'agreement.milestone_4_name', 'agreement.milestone_4_amount', 'agreement.milestone_4_date', 'agreement.milestone_4_description',
+        'agreement.milestone_5_name', 'agreement.milestone_5_amount', 'agreement.milestone_5_date', 'agreement.milestone_5_description',
     ];
 
     public function mergeData(Business $b, Client $c, Contract $contract, array $input): array
     {
-        $milestones = collect($input['milestones'] ?? [])->filter(fn ($m) => ! empty($m['name']))
-            ->map(fn ($m) => '- '.$m['name'].': '.Money::format(Money::parse($m['amount'] ?? 0)).(! empty($m['due_date']) ? ' (due '.$m['due_date'].')' : ''))->implode("\n");
+        $date = fn ($d) => $d ? Carbon::parse($d)->format('F j, Y') : '';
+        $rows = collect($input['milestones'] ?? [])->filter(fn ($m) => ! empty($m['name']))->values();
+        $milestones = $rows->map(fn ($m) => '• '.$m['name'].' — '.Money::format(Money::parse($m['amount'] ?? 0)).(! empty($m['due_date']) ? ', due '.$date($m['due_date']) : '')
+            .(! empty($m['description']) ? ': '.trim($m['description']) : ''))->implode("\n");
+        $indexed = [];
+        for ($i = 1; $i <= 5; $i++) {
+            $m = $rows[$i - 1] ?? null;
+            $indexed['agreement.milestone_'.$i.'_name'] = $m['name'] ?? '';
+            $indexed['agreement.milestone_'.$i.'_amount'] = $m ? Money::format(Money::parse($m['amount'] ?? 0)) : '';
+            $indexed['agreement.milestone_'.$i.'_date'] = $m ? $date($m['due_date'] ?? null) : '';
+            $indexed['agreement.milestone_'.$i.'_description'] = trim((string) ($m['description'] ?? ''));
+        }
+        $monthly = $contract->billing_monthly_cents > 0 ? Money::format($contract->billing_monthly_cents) : '';
+        $billingStart = $contract->billing_start_date ?? $contract->term_start_date ?? $contract->effective_date;
 
-        return [
+        return $indexed + [
             'business.legal_name' => $b->legal_name,
             'business.name' => $b->name(),
             'business.address' => implode(', ', $b->addressLines()),
@@ -63,13 +82,21 @@ class ContractService
             'agreement.title' => $contract->title,
             'agreement.number' => $contract->number,
             'agreement.effective_date' => $contract->effective_date?->format('F j, Y') ?? '',
+            'agreement.term_start_date' => ($contract->term_start_date ?? $contract->effective_date)?->format('F j, Y') ?? '',
             'agreement.term_end_date' => $contract->term_end_date?->format('F j, Y') ?? 'terminated by either party',
+            'agreement.term' => ($s = ($contract->term_start_date ?? $contract->effective_date)?->format('F j, Y'))
+                ? ($contract->term_end_date ? 'from '.$s.' through '.$contract->term_end_date->format('F j, Y') : 'from '.$s.' and continues until terminated by either party')
+                : '',
             'agreement.scope' => trim((string) ($input['scope'] ?? '')),
             'agreement.fees' => trim((string) ($input['fees'] ?? '')),
             'agreement.payment_terms_days' => (string) ($input['payment_terms_days'] ?? $b->default_terms_days),
             'agreement.committed_value' => Money::format($contract->committed_value_cents),
             'agreement.milestones' => $milestones,
-            'agreement.recurring_fee' => trim((string) ($input['recurring_fee'] ?? '')),
+            'agreement.recurring_fee' => trim((string) ($input['recurring_fee'] ?? '')) ?: ($monthly ? $monthly.' per month' : ''),
+            'agreement.monthly_fee' => $monthly,
+            'agreement.monthly_fee_description' => $monthly ? ($contract->billing_monthly_description ?: 'Monthly fee') : '',
+            'agreement.billing_start_date' => $monthly ? $date($billingStart) : '',
+            'agreement.milestone_total' => $rows->isNotEmpty() ? Money::format($rows->sum(fn ($m) => Money::parse($m['amount'] ?? 0))) : '',
         ];
     }
 
@@ -133,12 +160,19 @@ class ContractService
         $contract->fill([
             'title' => $data['title'] ?? $contract->title,
             'effective_date' => $data['effective_date'] ?? null,
-            'term_end_date' => $data['term_end_date'] ?? null,
+            'term_start_date' => $data['term_start_date'] ?? null,
+            'term_open_ended' => $openEnded = ! empty($data['term_open_ended']),
+            'term_end_date' => $openEnded ? null : ($data['term_end_date'] ?? null),
             'committed_value_cents' => Money::parse($data['committed_value'] ?? 0),
             'value_cap_cents' => ! empty($data['value_cap']) ? Money::parse($data['value_cap']) : null,
             'cap_behavior' => ($data['cap_behavior'] ?? 'warn') === 'block' ? 'block' : 'warn',
             'signing_order' => ($data['signing_order'] ?? $contract->signing_order) === 'sequential' ? 'sequential' : 'parallel',
             'require_email_code' => array_key_exists('require_email_code', $data) ? (bool) $data['require_email_code'] : ($contract->require_email_code ?? true),
+            'billing_monthly_cents' => ! empty($data['monthly_fee']) ? Money::parse($data['monthly_fee']) : null,
+            'billing_monthly_description' => ! empty($data['monthly_fee_description']) ? $data['monthly_fee_description'] : null,
+            'billing_start_date' => ($data['billing_start_date'] ?? null) ?: null,
+            'billing_auto' => array_key_exists('billing_auto', $data) ? (bool) $data['billing_auto'] : ($contract->billing_auto ?? true),
+            'billing_mode' => array_key_exists($data['billing_mode'] ?? '', ContractBillingService::MODES) ? $data['billing_mode'] : ($contract->billing_mode ?? 'draft'),
         ])->save();
         $client = Client::findOrFail($contract->client_id);
         $template = ! empty($data['template_id']) ? ContractTemplate::where('business_id', $business->id)->findOrFail($data['template_id']) : null;
@@ -151,7 +185,7 @@ class ContractService
             'template_id' => $template?->id,
             'template_version' => $template?->version,
             'body' => $source,
-            'snapshot' => ['input' => array_intersect_key($data, array_flip(['scope', 'fees', 'payment_terms_days', 'recurring_fee', 'milestones', 'committed_value', 'value_cap'])), 'merge' => $merge, 'rendered' => $body],
+            'snapshot' => ['input' => array_intersect_key($data, array_flip(['scope', 'fees', 'payment_terms_days', 'recurring_fee', 'milestones', 'committed_value', 'value_cap', 'monthly_fee', 'monthly_fee_description', 'billing_start_date'])), 'merge' => $merge, 'rendered' => $body],
         ];
         if ($version) {
             if ($version->isLocked()) throw new DomainException('This version was sent and is immutable. Void it and create a new version.');
@@ -185,9 +219,14 @@ class ContractService
         }
         // Milestones are part of the agreement (billing plan), not of the signature artifact.
         ContractMilestone::where('contract_id', $contract->id)->where('status', 'pending')->whereNull('invoice_id')->delete();
+        $billed = ContractMilestone::where('contract_id', $contract->id)->get()
+            ->map(fn ($m) => $m->name.'|'.$m->amount_cents.'|'.$m->due_date?->toDateString())->all();
         foreach ($data['milestones'] ?? [] as $m) {
             if (empty($m['name'])) continue;
-            ContractMilestone::create(['business_id' => $business->id, 'contract_id' => $contract->id, 'name' => $m['name'], 'amount_cents' => Money::parse($m['amount'] ?? 0), 'due_date' => ($m['due_date'] ?? null) ?: null]);
+            $cents = Money::parse($m['amount'] ?? 0);
+            // Already-invoiced milestones carried into a new version/amendment must not be billed twice.
+            if (in_array($m['name'].'|'.$cents.'|'.(($m['due_date'] ?? null) ?: ''), $billed, true)) continue;
+            ContractMilestone::create(['business_id' => $business->id, 'contract_id' => $contract->id, 'name' => $m['name'], 'description' => ($m['description'] ?? null) ?: null, 'amount_cents' => $cents, 'due_date' => ($m['due_date'] ?? null) ?: null]);
         }
 
         return $version;
@@ -348,8 +387,13 @@ class ContractService
             'title' => $amendment ? 'Amendment to '.$contract->title : $contract->title,
             'body' => $latest->body,
             'effective_date' => $contract->effective_date?->toDateString(),
+            'term_start_date' => $contract->term_start_date?->toDateString(),
             'term_end_date' => $contract->term_end_date?->toDateString(),
+            'term_open_ended' => $contract->term_open_ended,
             'committed_value' => Money::toDecimalString($contract->committed_value_cents),
+            'monthly_fee' => $contract->billing_monthly_cents ? Money::toDecimalString($contract->billing_monthly_cents) : null,
+            'monthly_fee_description' => $contract->billing_monthly_description,
+            'billing_start_date' => $contract->billing_start_date?->toDateString(),
             'signers' => $latest->recipients()->where('role', 'client_signer')->get()->map(fn ($r) => ['name' => $r->name, 'email' => $r->email, 'title' => $r->title])->all(),
             'countersigner_user_id' => $latest->recipients()->where('role', 'countersigner')->value('countersigner_user_id'),
         ];
@@ -392,6 +436,7 @@ class ContractService
             $contract->update(['current_version_id' => $v->id, 'status' => 'completed', 'externally_signed' => true, 'external_provenance' => $provenance]);
             $this->event($v, null, 'external_upload', ['provenance' => $provenance, 'sha256' => $doc->sha256]);
             Audit::log($business, 'contract.external_uploaded', $v, null, ['sha256' => $doc->sha256], $provenance);
+            DB::afterCommit(fn () => app(ContractBillingService::class)->runSafely($contract->id));
 
             return $v;
         });

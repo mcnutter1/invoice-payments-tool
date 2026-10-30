@@ -6,7 +6,7 @@
         <h1>{{ $contract->number }} · {{ $contract->title }} @include('partials.status', ['s' => $contract->status])</h1>
         <p class="text-sm text-slate-500"><a href="{{ $bu }}/clients/{{ $contract->client_id }}">{{ $contract->client->display_name }}</a>
             @if ($contract->effective_date) · Effective {{ $contract->effective_date->format('M j, Y') }} @endif
-            @if ($contract->term_end_date) · Ends {{ $contract->term_end_date->format('M j, Y') }} @endif
+            @if ($term = $contract->termLabel()) · Term {{ $term }} @endif
             @if ($contract->terminated_at) · <span class="text-red-700">Terminated {{ $contract->terminated_at->format('M j, Y') }}</span> @endif
             @if ($contract->externally_signed) · <span class="chip chip-gray">Externally signed — no in-app signature trail</span> @endif</p>
     </div>
@@ -44,11 +44,30 @@
         <div class="card"><div class="card-head"><h2>Version {{ $current->version }} @if($current->amends_version_id)<span class="chip chip-violet">Amendment</span>@endif</h2>@include('partials.status', ['s' => $current->status])</div>
             <div class="card-body prose-doc max-h-[32rem] overflow-auto text-sm">{!! $preview !!}</div></div>
         @endif
-        @if ($contract->milestones->isNotEmpty())
-        <div class="card overflow-x-auto"><div class="card-head"><h2>Milestones</h2></div>
-            <table class="tbl"><thead><tr><th>Milestone</th><th>Due</th><th class="num">Amount</th><th>Status</th><th></th></tr></thead><tbody>
-            @foreach ($contract->milestones as $m)
-                <tr><td>{{ $m->name }}</td><td>{{ $m->due_date?->format('M j, Y') }}</td><td class="num">@money($m->amount_cents)</td><td>@include('partials.status', ['s' => $m->status])</td>
+        @php
+            $hasPlan = $contract->milestones->isNotEmpty() || $contract->billing_monthly_cents > 0;
+            $planOutstanding = $contract->milestones->contains(fn ($m) => $m->status === 'pending' && ! $m->invoice_id)
+                || ($contract->billing_monthly_cents > 0 && ! $contract->schedules->contains('origin', 'contract'));
+        @endphp
+        @if ($hasPlan)
+        <div class="card overflow-x-auto"><div class="card-head"><div><h2>Billing plan</h2>
+                <p class="text-xs text-slate-500">{{ $contract->billing_auto ? 'Invoices are created automatically when fully signed · '.(\App\Services\Contracts\ContractBillingService::MODES[$contract->billing_mode ?? 'draft'] ?? '') : 'Automatic invoicing is off' }}</p></div>
+                @if ($planOutstanding && $contract->isExecuted() && $ctx->can('invoices.manage'))
+                    <form method="post" action="{{ $bu }}/contracts/{{ $contract->id }}/billing/run">@csrf<button class="btn btn-primary btn-sm">Create invoices now</button></form>
+                @endif
+            </div>
+            <table class="tbl"><thead><tr><th>Item</th><th>Invoice date</th><th class="num">Amount</th><th>Status</th><th></th></tr></thead><tbody>
+            @if ($contract->billing_monthly_cents > 0)
+                @php $sched = $contract->schedules->firstWhere('origin', 'contract'); @endphp
+                <tr><td><div class="font-medium">{{ $contract->billing_monthly_description ?: 'Monthly fee' }}</div><div class="text-xs text-slate-500">Monthly{{ $contract->term_end_date ? ' until '.$contract->term_end_date->format('M j, Y') : ', ongoing' }}</div></td>
+                    <td>{{ ($contract->billing_start_date ?? $contract->term_start_date ?? $contract->effective_date)?->format('M j, Y') ?? 'On signing' }}</td>
+                    <td class="num">@money($contract->billing_monthly_cents)<span class="text-xs text-slate-500">/mo</span></td>
+                    <td>@if ($sched)<span class="chip chip-blue">Scheduled</span>@else<span class="chip">Not set up</span>@endif</td>
+                    <td class="text-right">@if ($sched)<a href="{{ $bu }}/recurring/{{ $sched->id }}">Schedule</a>@endif</td></tr>
+            @endif
+            @foreach ($contract->milestones->sortBy('due_date') as $m)
+                <tr><td><div class="font-medium">{{ $m->name }}</div>@if ($m->description)<div class="text-xs text-slate-500">{{ $m->description }}</div>@endif</td>
+                    <td>{{ $m->due_date?->format('M j, Y') ?? 'On signing' }}</td><td class="num">@money($m->amount_cents)</td><td>@include('partials.status', ['s' => $m->status])</td>
                     <td class="text-right">@if ($m->invoice_id)<a href="{{ $bu }}/invoices/{{ $m->invoice_id }}">Invoice</a>@elseif ($ctx->can('invoices.manage') && $contract->isActiveForBilling())
                         <form method="post" action="{{ $bu }}/contracts/{{ $contract->id }}/milestones/{{ $m->id }}/invoice">@csrf<button class="btn btn-sm">Create invoice</button></form>@endif</td></tr>
             @endforeach

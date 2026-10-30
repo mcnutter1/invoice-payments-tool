@@ -219,6 +219,7 @@ class SignatureService
         $certDoc = $this->docs->put($business, 'contract_certificate', $contract->number.'-v'.$v->version.'-certificate.pdf', $cert, 'application/pdf');
 
         $v->update(['status' => 'completed', 'completed_at' => now(), 'signed_document_id' => $signed->id, 'signed_sha256' => $signed->sha256, 'certificate_document_id' => $certDoc->id]);
+        DB::afterCommit(fn () => app(ContractBillingService::class)->runSafely($contract->id));
         $isAmendment = (bool) $v->amends_version_id;
         $contract->update(array_filter([
             'status' => 'completed',

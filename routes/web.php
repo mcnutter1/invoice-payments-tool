@@ -233,6 +233,7 @@ Route::middleware('central')->group(function () {
             Route::post('/contract-recipients/{id}/remind', [C\ContractController::class, 'remind']);
         });
         Route::post('/contracts/{id}/milestones/{milestone}/invoice', [C\ContractController::class, 'invoiceMilestone'])->middleware('perm:invoices.manage');
+        Route::post('/contracts/{id}/billing/run', [C\ContractController::class, 'runBilling'])->middleware('perm:invoices.manage');
         Route::get('/contracts/{id}/countersign', [C\ContractController::class, 'countersignForm'])->middleware('perm:contracts.countersign');
         Route::post('/contracts/{id}/countersign', [C\ContractController::class, 'countersign'])->middleware(['perm:contracts.countersign', 'central:fresh']);
         Route::post('/my-signature/delete', [C\ContractController::class, 'forgetSignature'])->middleware('perm:contracts.countersign');

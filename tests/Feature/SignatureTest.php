@@ -161,6 +161,98 @@ class SignatureTest extends TestCase
         $this->assertNull(\App\Models\Membership::where('business_id', $biz->id)->where('user_id', $owner->id)->value('signature_document_id'));
     }
 
+    public function test_signed_agreement_creates_milestone_invoices_and_monthly_schedule(): void
+    {
+        $past = now()->subDays(2)->toDateString();
+        $future = now()->addMonths(2)->toDateString();
+        [$owner, $biz, $c, $v] = $this->sentContract([
+            'term_start_date' => now()->addMonth()->startOfMonth()->toDateString(), 'term_end_date' => now()->addYear()->toDateString(),
+            'monthly_fee' => '500', 'monthly_fee_description' => 'Advisory retainer', 'billing_mode' => 'issue_send', 'billing_auto' => true,
+            'milestones' => [
+                ['name' => 'Kickoff', 'description' => 'Discovery workshop', 'amount' => '1000', 'due_date' => $past],
+                ['name' => 'Final delivery', 'amount' => '2500.50', 'due_date' => $future],
+            ],
+        ]);
+        $merge = $v->snapshot['merge'];
+        $this->assertSame('$500.00', $merge['agreement.monthly_fee']);
+        $this->assertSame('Kickoff', $merge['agreement.milestone_1_name']);
+        $this->assertSame('$2,500.50', $merge['agreement.milestone_2_amount']);
+        $this->assertSame(\Illuminate\Support\Carbon::parse($future)->format('F j, Y'), $merge['agreement.milestone_2_date']);
+        $this->assertSame('$3,500.50', $merge['agreement.milestone_total']);
+
+        $r = ContractRecipient::where('contract_version_id', $v->id)->first();
+        $r->update(['status' => 'verified', 'verified_at' => now(), 'verified_email' => $r->email]);
+        app(\App\Services\Contracts\SignatureService::class)->sign($v->fresh(), $r->fresh(), ['typed_name' => 'Pat', 'consent' => true, 'authority' => true, 'signature_kind' => 'type', 'document_sha256' => $v->sha256]);
+        $this->assertSame('completed', $v->fresh()->status);
+
+        $ms = \App\Models\ContractMilestone::where('contract_id', $c->id)->orderBy('due_date')->get();
+        $this->assertCount(2, $ms);
+        $this->assertTrue($ms->every(fn ($m) => $m->invoice_id));
+        $kick = \App\Models\Invoice::with('lines')->find($ms[0]->invoice_id);
+        $final = \App\Models\Invoice::with('lines')->find($ms[1]->invoice_id);
+        $this->assertSame($v->id, $kick->contract_version_id);
+        $this->assertSame('Kickoff', $kick->lines[0]->name);
+        $this->assertStringContainsString('Discovery workshop', $kick->lines[0]->description);
+        $this->assertStringContainsString('Milestone payment per agreement '.$c->number, $kick->lines[0]->description);
+        $this->assertFalse($kick->isDraft(), 'due milestone is issued');
+        $this->assertSame(1000_00, $kick->total_cents);
+        $this->assertTrue($final->isDraft(), 'future milestone waits as a draft');
+        $this->assertSame($future, $final->issue_date->toDateString());
+        $this->assertSame('scheduled', $ms[1]->status);
+        $this->assertTrue(\App\Models\EmailOutbox::where('business_id', $biz->id)->where('kind', 'invoice')->exists());
+
+        $s = \App\Models\RecurringSchedule::where('contract_id', $c->id)->with('lines')->sole();
+        $this->assertSame('contract', $s->origin);
+        $this->assertSame('month', $s->cadence);
+        $this->assertSame(now()->addMonth()->startOfMonth()->toDateString(), $s->start_date->toDateString());
+        $this->assertSame('Advisory retainer', $s->lines[0]->name);
+        $this->assertTrue((bool) $s->auto_send);
+
+        // Idempotent.
+        app(\App\Services\Contracts\ContractBillingService::class)->onExecuted($c->fresh());
+        $this->assertSame(2, \App\Models\Invoice::where('contract_id', $c->id)->count());
+        $this->assertSame(1, \App\Models\RecurringSchedule::where('contract_id', $c->id)->count());
+
+        // Deleting the scheduled draft frees the milestone again.
+        app(\App\Services\Invoicing\InvoiceService::class)->deleteDraft($final);
+        $this->assertSame('pending', $ms[1]->fresh()->status);
+        $this->assertNull($ms[1]->fresh()->invoice_id);
+        $this->signIn($owner)->get("/b/{$biz->ulid}/contracts/{$c->id}")->assertOk()->assertSee('Billing plan')->assertSee('Create invoices now');
+    }
+
+    public function test_term_begin_and_open_ended_term_are_separate_from_effective_date(): void
+    {
+        $owner = $this->makeUser();
+        $biz = $this->makeBusiness($owner);
+        $client = $this->makeClient($biz, 'Term Co');
+        $base = ['client_id' => $client->id, 'title' => 'MSA', 'signing_order' => 'parallel', 'effective_date' => '2026-11-01',
+            'body' => '<p>Effective {{agreement.effective_date}}. Term {{agreement.term}}. Ends {{agreement.term_end_date}}.</p>'];
+
+        $this->signIn($owner)->post("/b/{$biz->ulid}/contracts", $base + ['term_start_date' => '2027-01-01', 'term_end_date' => '2026-12-01'])
+            ->assertSessionHasErrors('term_end_date');
+
+        $this->signIn($owner)->post("/b/{$biz->ulid}/contracts", $base + ['term_start_date' => '2027-01-01', 'term_end_date' => '2027-12-31', 'term_open_ended' => 1])->assertRedirect();
+        $c = \App\Models\Contract::latest('id')->first();
+        $this->assertSame('2027-01-01', $c->term_start_date->toDateString());
+        $this->assertTrue($c->term_open_ended);
+        $this->assertNull($c->term_end_date); // open-ended wins over a stale end date
+        $this->assertSame('Jan 1, 2027 – open-ended', $c->termLabel());
+        $this->assertStringContainsString('Effective November 1, 2026. Term from January 1, 2027 and continues until terminated by either party.', $c->currentVersion->snapshot['rendered']);
+        $this->signIn($owner)->get("/b/{$biz->ulid}/contracts/{$c->id}")->assertSee('Term Jan 1, 2027 – open-ended');
+        $this->signIn($owner)->get("/b/{$biz->ulid}/contracts/{$c->id}/edit")->assertSee('Open-ended');
+
+        $this->signIn($owner)->post("/b/{$biz->ulid}/contracts/{$c->id}", array_diff_key($base, ['client_id' => 1]) + ['term_start_date' => '2027-01-01', 'term_end_date' => '2027-12-31', 'term_open_ended' => 0])->assertRedirect();
+        $c->refresh();
+        $this->assertSame('2027-12-31', $c->term_end_date->toDateString());
+        $this->assertStringContainsString('Term from January 1, 2027 through December 31, 2027. Ends December 31, 2027.', $c->currentVersion->snapshot['rendered']);
+
+        // Billing waits for the term to begin even after the agreement is in effect.
+        $c->update(['billing_override_reason' => 'test']);
+        $this->assertFalse($c->fresh()->isActiveForBilling(\Illuminate\Support\Carbon::parse('2026-12-15')));
+        $this->assertTrue($c->fresh()->isActiveForBilling(\Illuminate\Support\Carbon::parse('2027-02-01')));
+        $this->assertFalse($c->fresh()->isActiveForBilling(\Illuminate\Support\Carbon::parse('2028-01-02')));
+    }
+
     public function test_contract_client_can_change_while_draft_and_signers_come_from_client_contacts(): void
     {
         $owner = $this->makeUser();
@@ -174,7 +266,7 @@ class SignatureTest extends TestCase
             'scope' => 'x', 'fees' => 'y', 'signing_order' => 'parallel', 'signers' => [['name' => 'Al', 'email' => 'al@alpha.test']]]);
 
         $this->signIn($owner)->get("/b/{$biz->ulid}/contracts/{$c->id}/edit")->assertOk()->assertSee('Alpha Co')
-            ->assertSee('data-signer-pick', false)->assertSee('bea@beta.test')->assertDontSee('ap@beta.test');
+            ->assertSee('data-signer-pick', false)->assertSee('bea@beta.test')->assertSee('ap@beta.test')->assertSee('&quot;signer&quot;:false', false);
         $this->signIn($owner)->post("/b/{$biz->ulid}/contracts/{$c->id}", ['client_id' => $b->id, 'title' => 'SOW', 'template_id' => $biz->contractTemplates()->value('id'),
             'effective_date' => '2026-07-01', 'scope' => 'x', 'fees' => 'y', 'signing_order' => 'parallel',
             'signers' => [['name' => 'Bea Signer', 'email' => 'bea@beta.test', 'title' => 'CEO']]])->assertRedirect();

@@ -12,7 +12,7 @@
         'verified' => ['Verified', 'chip-blue'], 'signed' => ['Signed', 'chip-green'], 'in_progress' => ['In progress', 'chip-amber'],
         'needs_review' => ['Needs review', 'chip-amber'], 'generated' => ['Generated', 'chip-green'], 'skipped' => ['Skipped', 'chip-gray'],
         'failed' => ['Failed', 'chip-red'], 'queued' => ['Queued', 'chip-gray'], 'accepted' => ['Accepted by mail service', 'chip-blue'],
-        'delivery_unknown' => ['Delivery unknown', 'chip-red'], 'undone' => ['Undone', 'chip-gray'], 'invoiced' => ['Invoiced', 'chip-green'],
+        'delivery_unknown' => ['Delivery unknown', 'chip-red'], 'undone' => ['Undone', 'chip-gray'], 'invoiced' => ['Invoiced', 'chip-green'], 'scheduled' => ['Invoice scheduled', 'chip-blue'],
         'pending_approval' => ['Awaiting approval', 'chip-amber'], 'archived' => ['Archived', 'chip-gray'],
     ];
     [$label, $cls] = $map[$s] ?? [ucfirst(str_replace('_', ' ', (string) $s)), 'chip-gray'];
