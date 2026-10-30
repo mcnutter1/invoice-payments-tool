@@ -160,7 +160,11 @@
       let auto = terms.value.trim() === defaults().trim();
       terms.addEventListener('input', () => { auto = terms.value.trim() === defaults().trim(); });
       // Follow the client's default terms until the user customizes them.
-      clientSel.addEventListener('change', () => { if (auto) terms.value = defaults(); });
+      clientSel.addEventListener('change', () => {
+        if (auto) terms.value = defaults();
+        const out = $('[data-payment-terms-out]', termsBox); const pt = clientSel.selectedOptions[0]?.dataset.paymentTerms;
+        if (out && pt) out.textContent = pt;
+      });
       $('[data-terms-reset]', termsBox).addEventListener('click', () => {
         if (terms.value.trim() && terms.value.trim() !== defaults().trim() && !window.confirm('Replace the terms on this invoice with the default terms?')) return;
         terms.value = defaults(); auto = true; terms.dispatchEvent(new Event('change', { bubbles: true }));

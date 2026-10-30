@@ -41,7 +41,7 @@
         <div><label class="label" for="reminder_days">Reminder days after due</label><input class="input" id="reminder_days" name="reminder_days" value="{{ implode(',', $rem['days'] ?? [3, 14, 30]) }}"></div>
         <div class="sm:col-span-3 grid gap-4 sm:grid-cols-2">
             <div><label class="label" for="default_customer_note">Default note to clients</label><textarea class="input" id="default_customer_note" name="default_customer_note" rows="2">{{ old('default_customer_note', $b->default_customer_note) }}</textarea></div>
-            <div><label class="label" for="default_terms_text">Standard invoice terms</label><textarea class="input" id="default_terms_text" name="default_terms_text" rows="6" placeholder="{{ \App\Support\InvoiceTerms::STANDARD }}">{{ old('default_terms_text', $b->default_terms_text) }}</textarea><p class="hint">Blank uses the standard terms shown. Client-specific terms (client profile) are added after these.</p></div>
+            <div><label class="label" for="default_terms_text">Standard invoice terms</label><textarea class="input" id="default_terms_text" name="default_terms_text" rows="10" placeholder="{{ \App\Support\InvoiceTerms::STANDARD }}">{{ old('default_terms_text', $b->default_terms_text) }}</textarea><p class="hint">Blank uses the standard terms shown. Placeholders <code>{payment_terms}</code> (from the client’s or your default payment terms), <code>{business_name}</code> and <code>{client_name}</code> are filled in per invoice. Start a paragraph with “Heading:” to bold it. Client-specific terms are added after these.</p></div>
         </div>
         <div><button class="btn btn-primary">Save profile</button></div>
     </fieldset>

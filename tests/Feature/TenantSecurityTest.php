@@ -40,13 +40,25 @@ class TenantSecurityTest extends TestCase
         $owner = $this->makeUser('u_owner');
         $biz = $this->makeBusiness($owner);
         $client = $this->makeClient($biz, 'Termsy LLC');
-        $client->update(['invoice_terms' => 'Reference PO 4500123.']);
+        $client->update(['invoice_terms' => 'Reference PO 4500123.', 'default_terms_days' => 45]);
         $line = [['name' => 'Work', 'quantity' => '1', 'unit_price' => '10']];
         $svc = app(\App\Services\Invoicing\InvoiceService::class);
 
         $auto = $svc->saveDraft($biz, null, ['client_id' => $client->id, 'lines' => $line]);
-        $this->assertStringStartsWith('1. Payment is due', $auto->terms);
-        $this->assertStringContainsString("Additional terms for Termsy LLC:\nReference PO 4500123.", $auto->terms);
+        $this->assertStringStartsWith('Payment terms: {payment_terms}.', $auto->terms, 'drafts keep the placeholder so it tracks the client profile');
+        $shown = \App\Support\InvoiceTerms::resolve($auto->terms, $auto);
+        $this->assertStringStartsWith('Payment terms: Net 45 (due within 45 days of the invoice date).', $shown);
+        $this->assertStringContainsString('No refunds or cancellations:', $shown);
+        $this->assertStringContainsString('Termsy LLC is responsible for all costs of collection', $shown);
+        $this->assertStringEndsWith("\n\nClient-specific terms: Reference PO 4500123.", $shown);
+        $this->assertStringContainsString('<strong>No refunds or cancellations:</strong>', \App\Support\InvoiceTerms::toHtml($shown));
+
+        // Changing the client profile updates the draft's payment terms; issuing freezes the wording.
+        $client->update(['default_terms_days' => 15]);
+        $this->assertStringStartsWith('Payment terms: Net 15', \App\Support\InvoiceTerms::resolve($auto->terms, $auto->fresh()));
+        $issued = $svc->issue($auto->fresh());
+        $this->assertStringStartsWith('Payment terms: Net 15 (due within 15 days of the invoice date).', $issued->fresh()->terms);
+        $this->assertStringNotContainsString('{', $issued->fresh()->terms);
 
         $this->signIn($owner)->get("/b/{$biz->ulid}/invoices/new?client={$client->id}")->assertOk()->assertSee('Reference PO 4500123.')->assertSee('Reset to default terms');
         $this->signIn($owner)->post("/b/{$biz->ulid}/invoices", ['client_id' => $client->id, 'discount_type' => 'none', 'terms' => 'Custom only.', 'lines' => $line])->assertRedirect();
@@ -54,8 +66,8 @@ class TenantSecurityTest extends TestCase
         $this->signIn($owner)->post("/b/{$biz->ulid}/invoices", ['client_id' => $client->id, 'discount_type' => 'none', 'terms' => '', 'lines' => $line])->assertRedirect();
         $this->assertNull(Invoice::latest('id')->value('terms'), 'cleared terms stay cleared');
 
-        $biz->update(['default_terms_text' => 'Our terms.']);
-        $this->assertSame("Our terms.\n\nAdditional terms for Termsy LLC:\nReference PO 4500123.", \App\Support\InvoiceTerms::forClient($biz->fresh(), $client->fresh()));
+        $biz->update(['default_terms_text' => 'Our terms for {client_name}.']);
+        $this->assertSame("Payment terms: {payment_terms}.\n\nOur terms for {client_name}.\n\nClient-specific terms: Reference PO 4500123.", \App\Support\InvoiceTerms::forClient($biz->fresh(), $client->fresh()), 'payment terms are always included');
     }
 
     public function test_client_contacts_can_be_edited_and_removed_within_tenant_only(): void

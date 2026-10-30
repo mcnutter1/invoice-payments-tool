@@ -31,6 +31,7 @@
     .section { margin-top: 16px; page-break-inside: avoid; }
     .section h3 { font-size: 10px; text-transform: uppercase; letter-spacing: .6px; margin: 0 0 4px; color: {{ $accent }}; }
     .box { border: 1px solid #e2e8f0; padding: 8px 10px; }
+    .terms { page-break-inside: auto; } .terms p { margin: 0 0 4px; }
     .watermark { position: fixed; top: 280px; left: 60px; font-size: 110px; color: rgba(148,163,184,0.25); transform: rotate(-30deg); }
     .logo { max-height: 56px; max-width: 180px; }
 </style></head>
@@ -145,5 +146,5 @@
 @endif
 
 @if ($invoice->customer_note)<div class="section"><h3>Notes</h3><div style="white-space: pre-line;">{{ $invoice->customer_note }}</div></div>@endif
-@if ($invoice->terms)<div class="section" style="border-top: 1px solid #e2e8f0; padding-top: 8px;"><h3>Terms &amp; conditions</h3><div style="white-space: pre-line; font-size: 8.5px; line-height: 1.5;" class="muted">{{ $invoice->terms }}</div></div>@endif
+@if ($invoice->terms)<div class="section terms" style="border-top: 1px solid #e2e8f0; padding-top: 8px;"><h3>Terms &amp; conditions</h3><div class="muted" style="font-size: 8px; line-height: 1.45;">{!! \App\Support\InvoiceTerms::toHtml(\App\Support\InvoiceTerms::resolve($invoice->terms, $invoice), 'color:#334155') !!}</div></div>@endif
 </body></html>

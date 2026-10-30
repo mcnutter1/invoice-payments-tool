@@ -119,7 +119,7 @@
     @if ($invoice->customer_note || $invoice->terms)
         <section class="border-t border-slate-100 px-5 py-4 text-sm text-slate-600 sm:px-6">
             @if ($invoice->customer_note)<p class="whitespace-pre-line">{{ $invoice->customer_note }}</p>@endif
-            @if ($invoice->terms)<h3 class="mt-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Terms &amp; conditions</h3><p class="mt-1 whitespace-pre-line text-xs leading-5 text-slate-500">{{ $invoice->terms }}</p>@endif
+            @if ($invoice->terms)<h3 class="mt-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Terms &amp; conditions</h3><div class="mt-1 space-y-2 text-xs leading-5 text-slate-500 [&_strong]:font-semibold [&_strong]:text-slate-700">{!! \App\Support\InvoiceTerms::toHtml(\App\Support\InvoiceTerms::resolve($invoice->terms, $invoice)) !!}</div>@endif
         </section>
     @endif
 </article>

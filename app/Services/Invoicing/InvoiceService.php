@@ -219,6 +219,8 @@ class InvoiceService
             $invoice->client_snapshot = $invoice->client->snapshot();
             $invoice->instructions_snapshot = InvoicePresenter::instructionsSnapshot($business, $invoice->payment_methods ?? []);
             $invoice->template_snapshot = InvoicePresenter::templateSnapshot($business);
+            // The issued record keeps the exact wording the client sees.
+            $invoice->terms = $invoice->terms !== null ? \App\Support\InvoiceTerms::resolve($invoice->terms, $invoice) : null;
             $invoice->save();
 
             if ($invoice->total_cents > 0) {

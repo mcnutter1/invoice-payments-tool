@@ -27,7 +27,7 @@
             <div class="sm:col-span-2"><label class="label" for="client_id">Client</label>
                 <select class="input" id="client_id" name="client_id" required data-client-select>
                     <option value="">Choose a client…</option>
-                    @foreach ($clients as $c)<option value="{{ $c->id }}" data-exempt="{{ $c->tax_exempt ? 1 : 0 }}" data-email="{{ $c->email }}" data-recipients="{{ json_encode($c->recipientOptions()) }}" data-terms="{{ \App\Support\InvoiceTerms::forClient($biz, $c) }}" @selected(old('client_id', $invoice?->client_id ?? $selectedClient) == $c->id)>{{ $c->display_name }}</option>@endforeach
+                    @foreach ($clients as $c)<option value="{{ $c->id }}" data-exempt="{{ $c->tax_exempt ? 1 : 0 }}" data-email="{{ $c->email }}" data-recipients="{{ json_encode($c->recipientOptions()) }}" data-terms="{{ \App\Support\InvoiceTerms::forClient($biz, $c) }}" data-payment-terms="{{ \App\Support\InvoiceTerms::paymentTerms($biz, $c) }}" @selected(old('client_id', $invoice?->client_id ?? $selectedClient) == $c->id)>{{ $c->display_name }}</option>@endforeach
                 </select>
                 @if ($clients->isEmpty())<p class="hint">No clients yet — <a href="{{ $bu }}/clients/new">add a client</a> first.</p>@endif
             </div>
@@ -68,7 +68,7 @@
                 <div class="flex items-end justify-between gap-2"><label class="label" for="terms">Terms</label>
                     <button type="button" class="btn btn-ghost btn-sm" data-terms-reset data-standard="{{ \App\Support\InvoiceTerms::standard($biz) }}">Reset to default terms</button></div>
                 <textarea class="input" id="terms" name="terms" rows="7" data-terms>{{ old('terms', $invoice ? $invoice->terms : \App\Support\InvoiceTerms::forClient($biz, $termsClient)) }}</textarea>
-                <p class="hint">Your standard terms plus this client’s terms (set on the client profile). Edit freely for this invoice, or clear to show none.</p></div>
+                <p class="hint"><code>{payment_terms}</code> is filled in automatically: <strong data-payment-terms-out>{{ \App\Support\InvoiceTerms::paymentTerms($biz, $termsClient) }}</strong> from the client profile (or the due date you set). <code>{client_name}</code> and <code>{business_name}</code> are filled in too. Client-specific terms come from the client profile; edit freely for this invoice, or clear to show none.</p></div>
             <div class="sm:col-span-2"><label class="label" for="internal_notes">Internal notes</label><textarea class="input" id="internal_notes" name="internal_notes" rows="2">{{ old('internal_notes', $invoice?->internal_notes) }}</textarea><p class="hint">Never shown on the PDF or client page.</p></div>
             <fieldset><legend class="label">Payment methods shown</legend>
                 @foreach ($biz->allowedMethods() as $m)
