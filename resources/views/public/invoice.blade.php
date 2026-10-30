@@ -37,7 +37,7 @@
             @php $z = $instructions['zelle']; @endphp
             <div class="card card-body">
                 <div class="flex items-center justify-between"><h3 class="text-base">Zelle</h3><span class="chip chip-violet">Fastest</span></div>
-                <p class="mt-1 text-sm text-slate-600">Send from your bank's app or website. {{ $business['name'] }} never sees your bank details.</p>
+                <p class="mt-1 text-sm text-slate-600">Send from your bank's app or website.</p>
                 @if ($zelleQr)
                     <figure class="mt-4 flex flex-col items-center text-center">
                         <img src="{{ $zelleQr }}" alt="Zelle QR code for {{ $z['recipient_name'] }}" class="h-44 w-44 rounded-lg border border-slate-200 bg-white object-contain p-2">
