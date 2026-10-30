@@ -177,7 +177,7 @@ class SettingsController extends Controller
         if (! $sample) {
             $client = new \App\Models\Client(['display_name' => 'Sample Client LLC', 'billing_line1' => '100 Main Street', 'billing_city' => 'Springfield', 'billing_state' => 'MA', 'billing_postal_code' => '01101']);
             $sample = new Invoice(['status' => 'draft', 'issue_date' => $b->localToday(), 'due_date' => $b->localToday()->addDays($b->default_terms_days),
-                'subtotal_cents' => 150000, 'total_cents' => 150000, 'balance_cents' => 150000, 'customer_note' => $b->default_customer_note, 'terms' => $b->default_terms_text, 'payment_methods' => $b->allowedMethods()]);
+                'subtotal_cents' => 150000, 'total_cents' => 150000, 'balance_cents' => 150000, 'customer_note' => $b->default_customer_note, 'terms' => \App\Support\InvoiceTerms::standard($b), 'payment_methods' => $b->allowedMethods()]);
             $sample->setRelation('business', $b);
             $sample->setRelation('client', $client->setRelation('contacts', collect()));
             $sample->setRelation('lines', collect([

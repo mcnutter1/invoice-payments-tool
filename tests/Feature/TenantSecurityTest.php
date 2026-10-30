@@ -35,6 +35,29 @@ class TenantSecurityTest extends TestCase
         $this->assertSame(1, Invoice::count());
     }
 
+    public function test_invoice_terms_default_to_standard_plus_client_terms_and_can_be_overridden(): void
+    {
+        $owner = $this->makeUser('u_owner');
+        $biz = $this->makeBusiness($owner);
+        $client = $this->makeClient($biz, 'Termsy LLC');
+        $client->update(['invoice_terms' => 'Reference PO 4500123.']);
+        $line = [['name' => 'Work', 'quantity' => '1', 'unit_price' => '10']];
+        $svc = app(\App\Services\Invoicing\InvoiceService::class);
+
+        $auto = $svc->saveDraft($biz, null, ['client_id' => $client->id, 'lines' => $line]);
+        $this->assertStringStartsWith('1. Payment is due', $auto->terms);
+        $this->assertStringContainsString("Additional terms for Termsy LLC:\nReference PO 4500123.", $auto->terms);
+
+        $this->signIn($owner)->get("/b/{$biz->ulid}/invoices/new?client={$client->id}")->assertOk()->assertSee('Reference PO 4500123.')->assertSee('Reset to default terms');
+        $this->signIn($owner)->post("/b/{$biz->ulid}/invoices", ['client_id' => $client->id, 'discount_type' => 'none', 'terms' => 'Custom only.', 'lines' => $line])->assertRedirect();
+        $this->assertSame('Custom only.', Invoice::latest('id')->value('terms'));
+        $this->signIn($owner)->post("/b/{$biz->ulid}/invoices", ['client_id' => $client->id, 'discount_type' => 'none', 'terms' => '', 'lines' => $line])->assertRedirect();
+        $this->assertNull(Invoice::latest('id')->value('terms'), 'cleared terms stay cleared');
+
+        $biz->update(['default_terms_text' => 'Our terms.']);
+        $this->assertSame("Our terms.\n\nAdditional terms for Termsy LLC:\nReference PO 4500123.", \App\Support\InvoiceTerms::forClient($biz->fresh(), $client->fresh()));
+    }
+
     public function test_client_contacts_can_be_edited_and_removed_within_tenant_only(): void
     {
         $owner = $this->makeUser('u_owner');

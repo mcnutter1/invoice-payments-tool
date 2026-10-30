@@ -150,6 +150,24 @@
     recalc();
   }
 
+  // ---------- Invoice terms ----------
+  {
+    const termsBox = $('[data-terms-box]');
+    const terms = termsBox && $('[data-terms]', termsBox);
+    const clientSel = $('#client_id');
+    if (terms && clientSel) {
+      const defaults = () => clientSel.selectedOptions[0]?.dataset.terms || $('[data-terms-reset]', termsBox).dataset.standard || '';
+      let auto = terms.value.trim() === defaults().trim();
+      terms.addEventListener('input', () => { auto = terms.value.trim() === defaults().trim(); });
+      // Follow the client's default terms until the user customizes them.
+      clientSel.addEventListener('change', () => { if (auto) terms.value = defaults(); });
+      $('[data-terms-reset]', termsBox).addEventListener('click', () => {
+        if (terms.value.trim() && terms.value.trim() !== defaults().trim() && !window.confirm('Replace the terms on this invoice with the default terms?')) return;
+        terms.value = defaults(); auto = true; terms.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+    }
+  }
+
   // ---------- Recurring schedule form ----------
   {
   const rec = $('[data-recurring-form]');

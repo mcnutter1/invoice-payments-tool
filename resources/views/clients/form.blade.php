@@ -37,6 +37,7 @@
         <div><label class="label" for="default_terms_days">Payment terms (days)</label><input class="input" id="default_terms_days" name="default_terms_days" type="number" min="0" max="365" value="{{ old('default_terms_days', $client->default_terms_days) }}" placeholder="Business default ({{ $biz->default_terms_days }})"></div>
         <div><label class="label" for="external_id">External ID</label><input class="input" id="external_id" name="external_id" value="{{ old('external_id', $client->external_id) }}"></div>
         <label class="flex items-center gap-2 text-sm"><input type="hidden" name="tax_exempt" value="0"><input class="check" type="checkbox" name="tax_exempt" value="1" @checked(old('tax_exempt', $client->tax_exempt))> Tax exempt (no sales tax on invoices)</label>
+        <div class="sm:col-span-2"><label class="label" for="invoice_terms">Client-specific invoice terms</label><textarea class="input" id="invoice_terms" name="invoice_terms" rows="3" placeholder="e.g. Reference PO 4500123 on every invoice. Net 45 per MSA §4.2.">{{ old('invoice_terms', $client->invoice_terms) }}</textarea><p class="hint">Added after your standard terms on new invoices for this client. Shown to the client.</p></div>
         <div class="sm:col-span-2"><label class="label" for="notes">Private notes</label><textarea class="input" id="notes" name="notes" rows="3">{{ old('notes', $client->notes) }}</textarea><p class="hint">Never shown to the client.</p></div>
     </div>
     @if (session('duplicate'))

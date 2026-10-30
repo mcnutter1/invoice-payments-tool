@@ -79,7 +79,7 @@ class InvoiceService
                 'total_cents' => $totals['total_cents'],
                 'balance_cents' => $totals['total_cents'],
                 'customer_note' => $data['customer_note'] ?? $business->default_customer_note,
-                'terms' => $data['terms'] ?? $business->default_terms_text,
+                'terms' => array_key_exists('terms', $data) ? $data['terms'] : \App\Support\InvoiceTerms::forClient($business, $client),
                 'internal_notes' => $data['internal_notes'] ?? null,
                 'payment_methods' => array_values(array_intersect($data['payment_methods'] ?? $business->allowedMethods(), $business->allowedMethods())),
                 'recipients' => $this->cleanRecipients($data['recipients'] ?? null, $client),

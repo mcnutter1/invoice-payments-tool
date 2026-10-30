@@ -27,7 +27,7 @@
             <div class="sm:col-span-2"><label class="label" for="client_id">Client</label>
                 <select class="input" id="client_id" name="client_id" required data-client-select>
                     <option value="">Choose a client…</option>
-                    @foreach ($clients as $c)<option value="{{ $c->id }}" data-exempt="{{ $c->tax_exempt ? 1 : 0 }}" data-email="{{ $c->email }}" data-recipients="{{ json_encode($c->recipientOptions()) }}" @selected(old('client_id', $invoice?->client_id ?? $selectedClient) == $c->id)>{{ $c->display_name }}</option>@endforeach
+                    @foreach ($clients as $c)<option value="{{ $c->id }}" data-exempt="{{ $c->tax_exempt ? 1 : 0 }}" data-email="{{ $c->email }}" data-recipients="{{ json_encode($c->recipientOptions()) }}" data-terms="{{ \App\Support\InvoiceTerms::forClient($biz, $c) }}" @selected(old('client_id', $invoice?->client_id ?? $selectedClient) == $c->id)>{{ $c->display_name }}</option>@endforeach
                 </select>
                 @if ($clients->isEmpty())<p class="hint">No clients yet — <a href="{{ $bu }}/clients/new">add a client</a> first.</p>@endif
             </div>
@@ -63,7 +63,12 @@
 
         <div class="card card-body grid gap-4 sm:grid-cols-2">
             <div class="sm:col-span-2"><label class="label" for="customer_note">Note to client</label><textarea class="input" id="customer_note" name="customer_note" rows="2">{{ old('customer_note', $invoice?->customer_note ?? $biz->default_customer_note) }}</textarea></div>
-            <div class="sm:col-span-2"><label class="label" for="terms">Terms</label><textarea class="input" id="terms" name="terms" rows="2">{{ old('terms', $invoice?->terms ?? $biz->default_terms_text) }}</textarea></div>
+            <div class="sm:col-span-2" data-terms-box>
+                @php $termsClient = $clients->firstWhere('id', (int) old('client_id', $invoice?->client_id ?? $selectedClient)); @endphp
+                <div class="flex items-end justify-between gap-2"><label class="label" for="terms">Terms</label>
+                    <button type="button" class="btn btn-ghost btn-sm" data-terms-reset data-standard="{{ \App\Support\InvoiceTerms::standard($biz) }}">Reset to default terms</button></div>
+                <textarea class="input" id="terms" name="terms" rows="7" data-terms>{{ old('terms', $invoice ? $invoice->terms : \App\Support\InvoiceTerms::forClient($biz, $termsClient)) }}</textarea>
+                <p class="hint">Your standard terms plus this client’s terms (set on the client profile). Edit freely for this invoice, or clear to show none.</p></div>
             <div class="sm:col-span-2"><label class="label" for="internal_notes">Internal notes</label><textarea class="input" id="internal_notes" name="internal_notes" rows="2">{{ old('internal_notes', $invoice?->internal_notes) }}</textarea><p class="hint">Never shown on the PDF or client page.</p></div>
             <fieldset><legend class="label">Payment methods shown</legend>
                 @foreach ($biz->allowedMethods() as $m)

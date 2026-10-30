@@ -145,5 +145,5 @@
 @endif
 
 @if ($invoice->customer_note)<div class="section"><h3>Notes</h3><div style="white-space: pre-line;">{{ $invoice->customer_note }}</div></div>@endif
-@if ($invoice->terms)<div class="section"><h3>Terms</h3><div style="white-space: pre-line;" class="muted">{{ $invoice->terms }}</div></div>@endif
+@if ($invoice->terms)<div class="section" style="border-top: 1px solid #e2e8f0; padding-top: 8px;"><h3>Terms &amp; conditions</h3><div style="white-space: pre-line; font-size: 8.5px; line-height: 1.5;" class="muted">{{ $invoice->terms }}</div></div>@endif
 </body></html>

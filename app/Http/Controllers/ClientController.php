@@ -59,6 +59,7 @@ class ClientController extends Controller
             'default_terms_days' => ['nullable', 'integer', 'min:0', 'max:365'],
             'tax_exempt' => ['nullable', 'boolean'],
             'notes' => ['nullable', 'string', 'max:5000'],
+            'invoice_terms' => ['nullable', 'string', 'max:5000'],
             'external_id' => ['nullable', 'string', 'max:100'],
         ];
     }
