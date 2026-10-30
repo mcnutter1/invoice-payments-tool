@@ -43,19 +43,16 @@ final class InvoiceTerms
         return self::standard($business).($specific !== '' ? "\n\nClient-specific terms: ".$specific : '');
     }
 
-    /** Fill placeholders for display. Payment terms follow the invoice's own dates, else the client profile. */
+    /** Fill placeholders for display. Payment terms always come from the client profile (else the business default). */
     public static function resolve(?string $terms, \App\Models\Invoice $invoice): string
     {
         $terms = (string) $terms;
         if (! str_contains($terms, '{')) return $terms;
         $business = $invoice->business ?? Business::find($invoice->business_id);
         $client = $invoice->client ?? Client::find($invoice->client_id);
-        $payment = $invoice->issue_date && $invoice->due_date
-            ? self::label((int) $invoice->issue_date->diffInDays($invoice->due_date, false))
-            : self::paymentTerms($business, $client);
 
         return strtr($terms, [
-            '{payment_terms}' => $payment,
+            '{payment_terms}' => self::paymentTerms($business, $client),
             '{business_name}' => $business->legal_name ?: $business->name(),
             '{client_name}' => $client ? ($client->legal_name ?: $client->display_name) : 'The client',
         ]);

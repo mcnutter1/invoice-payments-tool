@@ -53,6 +53,10 @@ class TenantSecurityTest extends TestCase
         $this->assertStringEndsWith("\n\nClient-specific terms: Reference PO 4500123.", $shown);
         $this->assertStringContainsString('<strong>No refunds or cancellations:</strong>', \App\Support\InvoiceTerms::toHtml($shown));
 
+        // A custom due date doesn't change the payment terms; they come from the client profile.
+        $dated = $svc->saveDraft($biz, null, ['client_id' => $client->id, 'issue_date' => '2026-11-01', 'due_date' => '2026-11-03', 'lines' => $line]);
+        $this->assertStringStartsWith('Payment terms: Net 45 ', \App\Support\InvoiceTerms::resolve($dated->terms, $dated));
+
         // Changing the client profile updates the draft's payment terms; issuing freezes the wording.
         $client->update(['default_terms_days' => 15]);
         $this->assertStringStartsWith('Payment terms: Net 15', \App\Support\InvoiceTerms::resolve($auto->terms, $auto->fresh()));
