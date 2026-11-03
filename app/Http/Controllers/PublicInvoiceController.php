@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Exceptions\DomainException;
 use App\Models\Business;
 use App\Models\ContractVersion;
-use App\Models\DocumentAccessEvent;
 use App\Models\Invoice;
 use App\Models\PaymentClaim;
 use App\Models\PrivateDocument;
@@ -15,6 +14,7 @@ use App\Services\Documents\DocumentStore;
 use App\Services\Documents\PdfRenderer;
 use App\Services\Invoicing\InvoicePresenter;
 use App\Services\Notifications\EmailTracker;
+use App\Services\PublicAccess\ClientActivity;
 use App\Services\PublicAccess\PublicLinkService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -31,17 +31,14 @@ class PublicInvoiceController extends Controller
 
     private function log(PublicToken $t, string $event, Request $request, ?int $versionId = null, ?string $detail = null): void
     {
-        DocumentAccessEvent::create([
+        app(ClientActivity::class)->record($request, [
             'business_id' => $t->business_id,
             'public_token_id' => $t->id,
             'invoice_id' => $t->invoice_id,
             'contract_version_id' => $versionId,
             'event' => $event,
             'detail' => $detail,
-            'probable_automation' => PublicLinkService::looksAutomated($request->userAgent()),
-            'ip' => $request->ip(),
-            'user_agent' => mb_substr((string) $request->userAgent(), 0, 255),
-        ]);
+        ], $t->recipient_email);
     }
 
     /** GET /i/{token}: exchange for a scoped session grant, then redirect to a clean URL. Never changes financial state. */
@@ -51,7 +48,11 @@ class PublicInvoiceController extends Controller
         if (! $t || ! $t->invoice_id) return $this->notFound();
         $this->links->grant($request, $t);
         $this->log($t, 'link_accessed', $request);
-        $action = $request->query('d') === 'pdf' ? 'pdf' : $request->query('a');
+        $action = match ($request->query('d')) {
+            'pdf' => 'pdf',
+            'paid' => 'paid_pdf',
+            default => $request->query('a'),
+        };
         if ($request->query('e')) {
             app(EmailTracker::class)->recordClick($request->query('e'), $action, $t, $request);
         }
@@ -61,8 +62,15 @@ class PublicInvoiceController extends Controller
 
             return redirect('/i/v/'.$invoice->ulid.'#howtopay');
         }
+        if ($action === 'report') {
+            return redirect('/i/v/'.$invoice->ulid.'?report=1#report');
+        }
 
-        return redirect('/i/v/'.$invoice->ulid.($action === 'pdf' ? '/pdf' : ''));
+        return redirect('/i/v/'.$invoice->ulid.match ($action) {
+            'pdf' => '/pdf',
+            'paid_pdf' => '/paid-pdf',
+            default => '',
+        });
     }
 
     private function resolve(Request $request, string $ulid): array
@@ -95,6 +103,7 @@ class PublicInvoiceController extends Controller
             'agreementTitle' => $invoice->contractVersion?->title ?? $invoice->contract?->title,
             'canReport' => $t->allows('report_payment') && $invoice->status === 'issued' && $invoice->balance_cents > 0,
             'reviewing' => (bool) $suppressed,
+            'openReport' => $request->boolean('report'),
         ]);
     }
 
@@ -131,6 +140,21 @@ class PublicInvoiceController extends Controller
         $this->log($t, 'pdf_downloaded', $request);
 
         return $docs->download($v->document, $invoice->number.'.pdf');
+    }
+
+    /** Current copy of the invoice (payments applied), stamped PAID once the balance is cleared. */
+    public function paidPdf(Request $request, string $ulid, PdfRenderer $pdf, InvoicePresenter $presenter)
+    {
+        [$invoice, $t] = $this->resolve($request, $ulid);
+        if (! $invoice || ! $t->allows('pdf') || $invoice->status !== 'issued') return $this->notFound();
+        $this->log($t, 'paid_pdf_downloaded', $request);
+        $paid = $invoice->balance_cents <= 0;
+        $vm = $presenter->viewModel($invoice) + ($paid ? ['watermark' => 'PAID', 'watermarkClass' => 'watermark-paid'] : []);
+
+        return response($pdf->render('pdf.invoice', $vm), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="'.$invoice->number.($paid ? '-paid' : '').'.pdf"',
+        ]);
     }
 
     public function remittance(Request $request, string $ulid, PdfRenderer $pdf, InvoicePresenter $presenter)

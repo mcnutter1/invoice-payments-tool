@@ -208,7 +208,7 @@ class InvoiceController extends Controller
         $invoice = $this->invoice($id)->load(['lines', 'taxLines', 'client', 'allocations.payment', 'allocations.creditNote', 'claims', 'documentVersions', 'contractVersion.contract', 'creditNotes']);
         $outbox = EmailOutbox::where('business_id', $invoice->business_id)->where('invoice_id', $invoice->id)->latest('id')->get();
         $access = \App\Models\DocumentAccessEvent::where('business_id', $invoice->business_id)->where('invoice_id', $invoice->id)->latest('id')->limit(200)->get();
-        $audit = \App\Models\AuditEvent::with('actor')->where('business_id', $invoice->business_id)->where('object_type', 'Invoice')->where('object_id', $invoice->id)->latest('id')->get();
+        $audit = \App\Models\AuditEvent::with('actor')->where('business_id', $invoice->business_id)->where('object_type', 'Invoice')->where('object_id', $invoice->id)->where('actor_type', '!=', 'client')->latest('id')->get();
 
         return view('invoices.show', [
             'invoice' => $invoice,
@@ -231,7 +231,7 @@ class InvoiceController extends Controller
         }
         foreach ($outbox as $o) {
             if ($o->accepted_at) {
-                $items[] = ['at' => $o->accepted_at, 'kind' => 'email', 'label' => ($o->kind === 'reminder' ? 'Reminder' : 'Invoice email').' accepted by mail service', 'who' => $o->to_email, 'detail' => null];
+                $items[] = ['at' => $o->accepted_at, 'kind' => 'email', 'label' => (['reminder' => 'Reminder', 'receipt' => 'Payment thank-you'][$o->kind] ?? 'Invoice email').' accepted by mail service', 'who' => $o->to_email, 'detail' => null];
             } elseif (in_array($o->status, ['failed', 'delivery_unknown', 'cancelled'], true)) {
                 $items[] = ['at' => $o->updated_at, 'kind' => 'email', 'label' => 'Email '.str_replace('_', ' ', $o->status), 'who' => $o->to_email, 'detail' => $o->last_error];
             }
@@ -239,7 +239,9 @@ class InvoiceController extends Controller
         $emails = $outbox->keyBy('id');
         foreach ($access as $e) {
             $items[] = ['at' => $e->created_at, 'kind' => 'client', 'label' => \App\Services\Notifications\EmailTracker::label($e),
-                'who' => $e->email_outbox_id ? ($emails[$e->email_outbox_id]->to_email ?? 'Client') : 'Client', 'detail' => null, 'automated' => $e->probable_automation];
+                'who' => $e->email_outbox_id ? ($emails[$e->email_outbox_id]->to_email ?? 'Client') : 'Client', 'automated' => $e->probable_automation,
+                'detail' => implode(' · ', array_filter([$e->ip ? 'IP '.$e->ip : null, $e->location, $e->network,
+                    \App\Services\PublicAccess\ClientActivity::source($e->user_agent, $e->probable_automation)]))];
         }
         usort($items, fn ($x, $y) => $y['at'] <=> $x['at']);
 
@@ -251,6 +253,8 @@ class InvoiceController extends Controller
         'invoice.issued' => 'Invoice issued',
         'invoice.send_queued' => 'Email queued',
         'invoice.reminder_queued' => 'Reminder queued',
+        'invoice.auto_reminders_on' => 'Automatic reminders turned on',
+        'invoice.auto_reminders_off' => 'Automatic reminders turned off',
         'invoice.voided' => 'Invoice cancelled',
         'invoice.links_revoked' => 'Client links revoked',
     ];
@@ -384,6 +388,16 @@ class InvoiceController extends Controller
         Audit::log($this->biz(), 'invoice.links_revoked', $invoice, null, ['count' => $n]);
 
         return back()->with('status', "Revoked {$n} client link(s). Send the invoice again to issue a new link.");
+    }
+
+    public function toggleReminders(int $id)
+    {
+        $invoice = $this->invoice($id);
+        $on = ! $invoice->autoRemindersOn($this->biz());
+        $invoice->update(['auto_reminders' => $on]);
+        Audit::log($this->biz(), 'invoice.auto_reminders_'.($on ? 'on' : 'off'), $invoice);
+
+        return back()->with('status', 'Automatic reminders turned '.($on ? 'on' : 'off').' for this invoice.');
     }
 
     public function void(Request $request, int $id)

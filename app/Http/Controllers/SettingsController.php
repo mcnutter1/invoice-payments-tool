@@ -55,14 +55,7 @@ class SettingsController extends Controller
             'claim_review_days' => ['required', 'integer', 'min:1', 'max:30'],
             'default_customer_note' => ['nullable', 'string', 'max:2000'],
             'default_terms_text' => ['nullable', 'string', 'max:5000'],
-            'reminders_enabled' => ['nullable', 'boolean'],
-            'reminder_days' => ['nullable', 'regex:/^\s*\d{1,3}(\s*,\s*\d{1,3})*\s*$/'],
         ]);
-        $data['reminder_settings'] = [
-            'enabled' => $request->boolean('reminders_enabled'),
-            'days' => array_values(array_unique(array_map('intval', array_filter(explode(',', (string) ($data['reminder_days'] ?? '3,14,30')), 'strlen')))),
-        ];
-        unset($data['reminders_enabled'], $data['reminder_days']);
         $data['show_tax_id'] = $request->boolean('show_tax_id');
         if (! empty($data['tax_id'])) $data['tax_id_encrypted'] = encrypt($data['tax_id']);
         unset($data['tax_id']);
@@ -72,6 +65,26 @@ class SettingsController extends Controller
         Audit::log($b, 'business.profile_updated', $b, $bf, $af);
 
         return back()->with('status', 'Profile saved. Issued documents keep their original snapshots.');
+    }
+
+    public function updateReminders(Request $request)
+    {
+        $b = $this->biz();
+        $rules = [];
+        foreach (array_keys(\App\Models\Business::REMINDERS) as $k) {
+            $rules[$k.'.enabled'] = ['nullable', 'boolean'];
+            $rules[$k.'.every_days'] = ['required', 'integer', 'min:1', 'max:90'];
+        }
+        $data = $request->validate($rules);
+        $settings = [];
+        foreach (array_keys(\App\Models\Business::REMINDERS) as $k) {
+            $settings[$k] = ['enabled' => $request->boolean($k.'.enabled'), 'every_days' => (int) $data[$k]['every_days']];
+        }
+        $before = $b->reminder_settings;
+        $b->update(['reminder_settings' => $settings]);
+        Audit::log($b, 'business.reminders_updated', $b, $before, $settings);
+
+        return back()->with('status', 'Reminder settings saved.');
     }
 
     public function updateBranding(Request $request, DocumentStore $docs)

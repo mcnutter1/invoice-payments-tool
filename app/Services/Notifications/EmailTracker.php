@@ -5,6 +5,7 @@ namespace App\Services\Notifications;
 use App\Models\DocumentAccessEvent;
 use App\Models\EmailOutbox;
 use App\Models\PublicToken;
+use App\Services\PublicAccess\ClientActivity;
 use App\Services\PublicAccess\PublicLinkService;
 use Illuminate\Http\Request;
 
@@ -17,6 +18,7 @@ class EmailTracker
         'link_accessed' => 'Opened the secure link',
         'invoice_viewed' => 'Viewed the invoice',
         'pdf_downloaded' => 'Downloaded the PDF',
+        'paid_pdf_downloaded' => 'Downloaded the paid invoice PDF',
         'remittance_downloaded' => 'Downloaded the remittance slip',
         'pay_clicked' => 'Clicked “Pay now”',
         'payment_details_copied' => 'Copied payment details',
@@ -29,6 +31,8 @@ class EmailTracker
         'view' => 'View invoice',
         'pdf' => 'Download PDF',
         'pay' => 'Pay now',
+        'report' => 'I’ve paid / mailed a check',
+        'paid_pdf' => 'Download paid invoice',
         'sign' => 'Review & sign',
         'agreement' => 'View agreement',
     ];
@@ -104,7 +108,7 @@ class EmailTracker
         $ua = (string) $request->userAgent();
         // Gmail fetches images through its proxy only when the recipient opens the message.
         $automated = PublicLinkService::looksAutomated($ua) && ! ($event === 'email_opened' && stripos($ua, 'googleimageproxy') !== false);
-        DocumentAccessEvent::create([
+        app(ClientActivity::class)->record($request, [
             'business_id' => $o->business_id,
             'public_token_id' => $tokenId,
             'invoice_id' => $o->invoice_id,
@@ -113,8 +117,6 @@ class EmailTracker
             'event' => $event,
             'detail' => $detail,
             'probable_automation' => $automated,
-            'ip' => $request->ip(),
-            'user_agent' => mb_substr($ua, 0, 255),
-        ]);
+        ], $o->to_email);
     }
 }

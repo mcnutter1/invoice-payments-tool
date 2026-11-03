@@ -11,7 +11,7 @@
             <td class="text-xs">{{ $e->object_type }} {{ $e->object_id ? '#'.$e->object_id : '' }}</td>
             <td class="max-w-md text-xs text-slate-600">@if($e->reason)<div>Reason: {{ $e->reason }}</div>@endif
                 @if($e->after)<div class="break-all">{{ \Illuminate\Support\Str::limit(json_encode($e->after, JSON_UNESCAPED_SLASHES), 240) }}</div>@endif
-                <div class="text-slate-400">{{ $e->ip }} · {{ \Illuminate\Support\Str::limit($e->correlation_id, 18) }}</div></td></tr>
+                <div class="text-slate-400">{{ implode(' · ', array_filter([$e->ip, $e->location, $e->network, \Illuminate\Support\Str::limit($e->correlation_id, 18)])) }}</div></td></tr>
     @empty<tr><td colspan="5" class="text-slate-500">No events.</td></tr>@endforelse
     </tbody></table>
 </div>

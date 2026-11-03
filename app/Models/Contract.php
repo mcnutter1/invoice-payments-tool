@@ -25,7 +25,13 @@ class Contract extends Model
         'ended_at' => 'datetime',
         'externally_signed' => 'boolean',
         'require_email_code' => 'boolean',
+        'auto_reminders' => 'boolean',
     ];
+
+    public function autoRemindersOn(Business $b): bool
+    {
+        return $this->auto_reminders ?? $b->reminder('contract_unsigned')['enabled'];
+    }
 
     protected static function booted(): void
     {

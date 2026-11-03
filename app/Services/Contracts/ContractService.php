@@ -355,10 +355,10 @@ class ContractService
         }
     }
 
-    public function remind(ContractRecipient $r): void
+    public function remind(ContractRecipient $r, ?string $reason = null): void
     {
         $v = ContractVersion::findOrFail($r->contract_version_id);
-        if (! in_array($v->status, ['sent', 'partially_signed'], true) || $r->status !== 'sent' || $r->role !== 'client_signer') {
+        if (! in_array($v->status, ['sent', 'partially_signed'], true) || ! in_array($r->status, ['sent', 'viewed', 'verified'], true) || $r->role !== 'client_signer') {
             throw new DomainException('This signer cannot be reminded.');
         }
         $business = Business::findOrFail($v->business_id);
@@ -368,6 +368,7 @@ class ContractService
         ], max(1, (int) now()->diffInDays($v->expires_at, false)));
         $this->email->queueContractInvitation($r, url('/c/'.$raw), true);
         $this->event($v, $r, 'reminded');
+        Audit::log($business, 'contract.reminder_queued', $v, null, ['recipient' => $r->email], $reason);
     }
 
     public function void(ContractVersion $v, string $reason): void
@@ -597,6 +598,12 @@ class ContractService
     {
         $seq = (int) SignatureEvent::where('contract_version_id', $v->id)->lockForUpdate()->max('seq') + 1;
         $req = app()->runningInConsole() ? null : request();
+        if ($req && ! app(\App\Support\Context::class)->user) {
+            Audit::log($v->business_id, 'client.contract_'.$event, $v, null, array_filter([
+                'email' => $r?->email,
+                'source' => \App\Services\PublicAccess\ClientActivity::source($req->userAgent(), \App\Services\PublicAccess\PublicLinkService::looksAutomated($req->userAgent())),
+            ]), null, 'client');
+        }
 
         return SignatureEvent::create([
             'business_id' => $v->business_id,

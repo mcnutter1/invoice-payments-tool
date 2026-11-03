@@ -36,10 +36,11 @@
     .kv td { padding: 1px 0; vertical-align: top; } .kv td.k { color: #64748b; width: 62px; }
     .terms { page-break-inside: auto; } .terms p { margin: 0 0 4px; }
     .watermark { position: fixed; top: 280px; left: 60px; font-size: 110px; color: rgba(148,163,184,0.25); transform: rotate(-30deg); }
+    .watermark-paid { left: 150px; font-weight: bold; color: rgba(5,150,105,0.28); border: 8px solid rgba(5,150,105,0.28); padding: 0 24px; }
     .logo { max-height: 56px; max-width: 180px; }
 </style></head>
 <body>
-@isset($watermark)<div class="watermark">{{ $watermark }}</div>@endisset
+@isset($watermark)<div class="watermark {{ $watermarkClass ?? '' }}">{{ $watermark }}</div>@endisset
 <header>
     @if ($modern)<div class="brandbar"></div>@endif
     <table><tr>

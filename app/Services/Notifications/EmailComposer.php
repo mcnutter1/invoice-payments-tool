@@ -84,7 +84,7 @@ class EmailComposer
     }
 
     /** @param list<string> $recipients */
-    public function queueInvoice(Invoice $invoice, array $recipients, string $kind = 'invoice', ?string $message = null): int
+    public function queueInvoice(Invoice $invoice, array $recipients, string $kind = 'invoice', ?string $message = null, ?string $auditReason = null): int
     {
         $invoice->refresh();
         if (! $invoice->isIssued()) throw new DomainException('Issue the invoice before sending it.');
@@ -116,7 +116,7 @@ class EmailComposer
             ]];
         }
         $intro = $message ?: match (true) {
-            $kind === 'reminder' && $overdue => 'This is a friendly reminder that the invoice below is past due. If you’ve already sent payment, thank you — you can let us know from the invoice page.',
+            $kind === 'reminder' && $overdue => 'Our records show the invoice below is past due. If you’ve already paid or mailed a check, please let us know with the “I’ve paid / mailed a check” button so we can mark it.',
             $kind === 'reminder' => 'This is a friendly reminder that the invoice below has an open balance.',
             default => $business->brand('email_intro') ?: 'Thank you for your business. Your invoice is ready.',
         };
@@ -133,7 +133,9 @@ class EmailComposer
             $buttons = $payable
                 ? [['label' => 'Pay invoice', 'url' => $url, 'track' => 'pay'], ['label' => 'View invoice', 'url' => $url, 'track' => 'view', 'style' => 'secondary'], ['label' => 'Download PDF', 'url' => $url.'?d=pdf', 'track' => 'pdf', 'style' => 'secondary']]
                 : [['label' => 'View invoice', 'url' => $url, 'track' => 'view'], ['label' => 'Download PDF', 'url' => $url.'?d=pdf', 'track' => 'pdf', 'style' => 'secondary']];
-
+            if ($payable && $kind === 'reminder') {
+                array_splice($buttons, 1, 0, [['label' => 'I’ve paid / mailed a check', 'url' => $url, 'track' => 'report', 'style' => 'secondary']]);
+            }
             $subject = ($kind === 'reminder' ? ($overdue ? 'Past due: ' : 'Reminder: ') : '').'Invoice '.$invoice->number.' from '.$business->name();
             $this->queue($business, $kind, $to, $subject, [
                 'tag' => $kind === 'reminder' ? 'Payment reminder' : 'Invoice',
@@ -165,37 +167,66 @@ class EmailComposer
         $invoice->delivery_status = 'queued';
         if ($kind === 'reminder') $invoice->last_reminder_at = now();
         $invoice->save();
-        Audit::log($business, 'invoice.'.($kind === 'reminder' ? 'reminder_queued' : 'send_queued'), $invoice, null, ['recipients' => $recipients]);
+        Audit::log($business, 'invoice.'.($kind === 'reminder' ? 'reminder_queued' : 'send_queued'), $invoice, null, ['recipients' => $recipients], $auditReason);
 
         return $count;
     }
 
+    /** "Thank you for your payment": confirms receipt and links a copy of each paid invoice stamped PAID. */
     public function queueReceipt(Payment $payment): void
     {
         $payment->loadMissing('client.contacts', 'allocations.invoice');
-        $to = $payment->client->billingEmail();
-        if (! $to || $payment->receipt_emailed_at) return;
+        if ($payment->receipt_emailed_at) return;
         $business = Business::find($payment->business_id);
+        $allocs = $payment->allocations->where('status', 'active')->filter(fn ($a) => $a->invoice?->isIssued());
+        $invoices = $allocs->map(fn ($a) => $a->invoice->fresh())->unique('id')->values();
+        $to = $invoices->flatMap(fn ($i) => $i->deliveryRecipients())->unique()->values()->all()
+            ?: array_filter([$payment->client->billingEmail()]);
+        if (! $to) return;
+
         $details = [
             ['Method', \App\Services\Payments\PaymentService::METHODS[$payment->method] ?? $payment->method],
             ['Date received', $payment->received_date->format('F j, Y')],
         ];
-        foreach ($payment->allocations->where('status', 'active') as $a) {
+        foreach ($allocs as $a) {
             $details[] = ['Applied to '.$a->invoice->number, Money::format($a->amount_cents)];
-            $details[] = [$a->invoice->number.' balance', Money::format($a->invoice->fresh()->balance_cents)];
+            $details[] = [$a->invoice->number.' balance', Money::format($invoices->firstWhere('id', $a->invoice_id)->balance_cents)];
         }
         if (($unapplied = $payment->unappliedCents()) > 0) $details[] = ['Credit on account', Money::format($unapplied)];
-        $this->queue($business, 'receipt', $to, 'Payment received — '.$business->name(), [
-            'tag' => 'Receipt',
-            'preheader' => 'We received your payment of '.Money::format($payment->amount_cents).'.',
-            'greeting' => 'Hello '.$payment->client->display_name.',',
-            'paragraphs' => ['We received your payment. Thank you!'],
-            'highlight' => ['label' => 'Payment received', 'value' => Money::format($payment->amount_cents)],
-            'details' => $details,
-            'signoff' => 'With thanks,',
-        ], ['payment_id' => $payment->id]);
+        $allPaid = $invoices->isNotEmpty() && $invoices->every(fn ($i) => $i->balance_cents <= 0);
+
+        foreach ($to as $email) {
+            $buttons = [];
+            foreach ($invoices as $inv) {
+                [, $raw] = $this->links->issue($business, 'invoice_view', [
+                    'invoice_id' => $inv->id,
+                    'contract_version_id' => $inv->contract_version_id,
+                    'allowed_actions' => ['view', 'pdf', 'view_contract'],
+                    'recipient_email' => $email,
+                ], $business->invoice_link_ttl_days);
+                $paid = $inv->balance_cents <= 0;
+                $buttons[] = ['label' => ($paid ? 'Download paid invoice' : 'Download updated invoice').($invoices->count() > 1 ? ' '.$inv->number : '').' (PDF)',
+                    'url' => url('/i/'.$raw).'?d=paid', 'track' => 'paid_pdf'];
+            }
+            $this->queue($business, 'receipt', $email, 'Thank you for your payment — '.$business->name(), [
+                'tag' => 'Payment received',
+                'preheader' => 'We received your payment of '.Money::format($payment->amount_cents).'. Thank you!',
+                'greeting' => 'Hello '.$payment->client->display_name.',',
+                'paragraphs' => array_values(array_filter([
+                    'Thank you for your payment. We’ve received it and marked it as received on our records.',
+                    $invoices->isEmpty() ? null : ($allPaid
+                        ? 'A copy of your invoice marked PAID is available below for your records.'
+                        : 'An updated copy of your invoice showing the remaining balance is available below.'),
+                ])),
+                'highlight' => ['label' => 'Payment received', 'value' => Money::format($payment->amount_cents), 'sub' => $allPaid ? 'Paid in full — thank you!' : null],
+                'details' => $details,
+                'buttons' => $buttons,
+                'signoff' => 'With thanks,',
+            ], ['payment_id' => $payment->id, 'invoice_id' => $invoices->count() === 1 ? $invoices->first()->id : null]);
+        }
         $payment->receipt_emailed_at = now();
         $payment->save();
+        Audit::log($business, 'payment.receipt_queued', $payment, null, ['recipients' => $to, 'invoices' => $invoices->pluck('number')->all()]);
     }
 
     public function queueContractInvitation(ContractRecipient $r, string $url, bool $reminder = false): void

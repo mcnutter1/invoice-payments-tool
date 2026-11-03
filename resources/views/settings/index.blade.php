@@ -1,11 +1,11 @@
 @extends('layouts.app')
 @section('title', 'Settings')
 @section('content')
-@php $dis = $canManage ? '' : 'disabled'; $rem = $b->reminder_settings ?? []; @endphp
+@php $dis = $canManage ? '' : 'disabled'; @endphp
 <div class="flex flex-wrap items-center justify-between gap-3">
     <h1>Settings</h1>
     <nav class="flex flex-wrap gap-1">
-        <a class="btn btn-sm" href="#profile">Profile</a><a class="btn btn-sm" href="#branding">Branding</a><a class="btn btn-sm" href="#payments">Payment instructions</a><a class="btn btn-sm" href="#email">Email</a>
+        <a class="btn btn-sm" href="#profile">Profile</a><a class="btn btn-sm" href="#reminders">Reminders</a><a class="btn btn-sm" href="#branding">Branding</a><a class="btn btn-sm" href="#payments">Payment instructions</a><a class="btn btn-sm" href="#email">Email</a>
         @if ($ctx->can('members.manage'))<a class="btn btn-sm" href="{{ $bu }}/settings/members">Members</a>@endif
         @if ($ctx->can('roles.manage'))<a class="btn btn-sm" href="{{ $bu }}/settings/roles">Roles</a>@endif
         @if ($ctx->can('automation.view'))<a class="btn btn-sm" href="{{ $bu }}/automation">Automation</a>@endif
@@ -37,13 +37,26 @@
         <div><label class="label" for="invoice_link_ttl_days">Invoice link lifetime (days)</label><input class="input" id="invoice_link_ttl_days" name="invoice_link_ttl_days" type="number" min="1" max="365" value="{{ $b->invoice_link_ttl_days }}"></div>
         <div><label class="label" for="contract_link_ttl_days">Signing link lifetime (days)</label><input class="input" id="contract_link_ttl_days" name="contract_link_ttl_days" type="number" min="1" max="90" value="{{ $b->contract_link_ttl_days }}"></div>
         <div><label class="label" for="claim_review_days">Pause reminders after a payment report (days)</label><input class="input" id="claim_review_days" name="claim_review_days" type="number" min="1" max="30" value="{{ $b->claim_review_days }}"></div>
-        <label class="flex items-center gap-2 self-center text-sm"><input type="hidden" name="reminders_enabled" value="0"><input class="check" type="checkbox" name="reminders_enabled" value="1" @checked(! empty($rem['enabled']))> Send overdue reminders automatically</label>
-        <div><label class="label" for="reminder_days">Reminder days after due</label><input class="input" id="reminder_days" name="reminder_days" value="{{ implode(',', $rem['days'] ?? [3, 14, 30]) }}"></div>
         <div class="sm:col-span-3 grid gap-4 sm:grid-cols-2">
             <div><label class="label" for="default_customer_note">Default note to clients</label><textarea class="input" id="default_customer_note" name="default_customer_note" rows="2">{{ old('default_customer_note', $b->default_customer_note) }}</textarea></div>
             <div><label class="label" for="default_terms_text">Standard invoice terms</label><textarea class="input" id="default_terms_text" name="default_terms_text" rows="10" placeholder="{{ \App\Support\InvoiceTerms::STANDARD }}">{{ old('default_terms_text', $b->default_terms_text) }}</textarea><p class="hint">Blank uses the standard terms shown. Placeholders <code>{payment_terms}</code> (from the client’s or your default payment terms), <code>{business_name}</code> and <code>{client_name}</code> are filled in per invoice. Start a paragraph with “Heading:” to bold it. Client-specific terms are added after these.</p></div>
         </div>
         <div><button class="btn btn-primary">Save profile</button></div>
+    </fieldset>
+</form>
+
+<form id="reminders" method="post" action="{{ $bu }}/settings/reminders" class="card mt-4">@csrf
+    <div class="card-head"><h2>Automatic client reminders</h2></div>
+    <fieldset class="card-body space-y-3" {{ $dis }}>
+        @foreach (\App\Models\Business::REMINDERS as $k => $label)
+            @php $r = $b->reminder($k); @endphp
+            <div class="grid items-center gap-2 text-sm sm:grid-cols-3">
+                <label class="flex items-center gap-2 sm:col-span-2"><input type="hidden" name="{{ $k }}[enabled]" value="0"><input class="check" type="checkbox" name="{{ $k }}[enabled]" value="1" @checked($r['enabled'])> {{ $label }}</label>
+                <label class="flex items-center gap-2">every <input class="input input-sm w-20" name="{{ $k }}[every_days]" type="number" min="1" max="90" value="{{ $r['every_days'] }}" aria-label="{{ $label }}: days between reminders"> days</label>
+            </div>
+        @endforeach
+        <p class="hint">Agreements: each signer is reminded until they sign or the link expires. Unviewed invoices: until the client opens the invoice page or PDF (email-open pixels don’t count, since mail scanners trigger them). Past-due invoices: counted from the due date; the email asks the client to report payment or a mailed check. Reminders pause after a payment report (see Profile). Runs daily; every reminder is recorded in the audit log.</p>
+        <div><button class="btn btn-primary">Save reminders</button></div>
     </fieldset>
 </form>
 

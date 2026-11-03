@@ -73,7 +73,7 @@
     </div>
 
     @if ($canReport)
-    <details class="group" @if($errors->any()) open @endif>
+    <details id="report" class="group scroll-mt-4" @if($errors->any() || ! empty($openReport)) open @endif>
         <summary class="summary-btn">
             <svg aria-hidden="true" viewBox="0 0 20 20" class="h-5 w-5 fill-current"><path d="M16.7 5.3a1 1 0 0 1 0 1.4l-8 8a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.4L8 12.6l7.3-7.3a1 1 0 0 1 1.4 0Z"/></svg>
             <span>I've sent payment</span>

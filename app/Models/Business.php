@@ -111,4 +111,23 @@ class Business extends Model
     {
         return \Illuminate\Support\Carbon::parse(now($this->timezone ?: 'America/New_York')->toDateString());
     }
+
+    public const REMINDERS = [
+        'contract_unsigned' => 'Agreements awaiting signature',
+        'invoice_unviewed' => 'Invoices sent but not yet viewed',
+        'invoice_overdue' => 'Past-due invoices',
+    ];
+
+    /** @return array{enabled: bool, every_days: int} */
+    public function reminder(string $kind): array
+    {
+        $cfg = $this->reminder_settings ?? [];
+        $s = (array) ($cfg[$kind] ?? []) + [
+            // Legacy single flag only ever covered overdue invoices.
+            'enabled' => $kind === 'invoice_overdue' && ! empty($cfg['enabled']),
+            'every_days' => 3,
+        ];
+
+        return ['enabled' => (bool) $s['enabled'], 'every_days' => max(1, min(90, (int) $s['every_days']))];
+    }
 }

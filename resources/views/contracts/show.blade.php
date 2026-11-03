@@ -13,6 +13,10 @@
             @foreach ($renewals as $rn) · Renewed as <a href="{{ $bu }}/contracts/{{ $rn->id }}">{{ $rn->number }}</a> @endforeach</p>
     </div>
     <div class="flex flex-wrap gap-2">
+        @if ($current && in_array($current->status, ['prepared', 'sent', 'partially_signed'], true) && $ctx->can('contracts.send'))
+            @include('partials.reminder-toggle', ['action' => $bu.'/contracts/'.$contract->id.'/auto-reminders', 'on' => $contract->autoRemindersOn($biz),
+                'hint' => 'signers every '.$biz->reminder('contract_unsigned')['every_days'].' days until signed'])
+        @endif
         @if ($myCountersign)<a class="btn btn-primary" href="{{ $bu }}/contracts/{{ $contract->id }}/countersign">{{ $current->status === 'prepared' ? 'Sign before sending' : 'Countersign now' }}</a>@endif
         @if ($current && ! $current->source_document_id)<a class="btn" href="{{ $bu }}/contracts/{{ $contract->id }}/versions/{{ $current->version }}/preview" target="_blank" rel="noopener">Preview contract</a>@endif
         @if ($current && in_array($current->status, ['draft']) && $ctx->can('contracts.manage'))
@@ -112,7 +116,7 @@
                     @if ($r->signed_at)<br><span class="text-xs text-emerald-700">Signed {{ $r->signed_at->timezone($biz->timezone)->format('M j, g:ia') }} ({{ $r->signature_kind }})</span>@endif
                     @if ($r->declined_at)<br><span class="text-xs text-red-700">Declined: {{ $r->decline_reason }}</span>@endif</span>
                     <span class="text-right">@include('partials.status', ['s' => $r->status])
-                        @if ($r->role === 'client_signer' && $r->status === 'sent' && in_array($current->status, ['sent', 'partially_signed']) && $ctx->can('contracts.send'))
+                        @if ($r->role === 'client_signer' && in_array($r->status, ['sent', 'viewed', 'verified'], true) && in_array($current->status, ['sent', 'partially_signed']) && $ctx->can('contracts.send'))
                             <form method="post" action="{{ $bu }}/contract-recipients/{{ $r->id }}/remind" class="mt-1">@csrf<button class="btn btn-sm">Remind</button></form>@endif</span></li>
             @endforeach
         </ul></div>

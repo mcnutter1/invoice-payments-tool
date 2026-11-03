@@ -6,12 +6,12 @@ use App\Exceptions\DomainException;
 use App\Models\Business;
 use App\Models\ContractRecipient;
 use App\Models\ContractVersion;
-use App\Models\DocumentAccessEvent;
 use App\Models\PrivateDocument;
 use App\Models\PublicToken;
 use App\Services\Contracts\ContractService;
 use App\Services\Contracts\SignatureService;
 use App\Services\Documents\DocumentStore;
+use App\Services\PublicAccess\ClientActivity;
 use App\Services\PublicAccess\PublicLinkService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -31,11 +31,10 @@ class PublicContractController extends Controller
         $t = $this->links->find($token, 'contract_sign') ?? $this->links->find($token, 'contract_view');
         if (! $t || ! $t->contract_recipient_id) return $this->notFound();
         $this->links->grant($request, $t);
-        DocumentAccessEvent::create([
+        app(ClientActivity::class)->record($request, [
             'business_id' => $t->business_id, 'public_token_id' => $t->id, 'contract_version_id' => $t->contract_version_id,
-            'event' => 'link_accessed', 'probable_automation' => PublicLinkService::looksAutomated($request->userAgent()),
-            'ip' => $request->ip(), 'user_agent' => mb_substr((string) $request->userAgent(), 0, 255),
-        ]);
+            'event' => 'link_accessed',
+        ], $t->recipient_email);
         if ($request->query('e')) {
             app(\App\Services\Notifications\EmailTracker::class)->recordClick($request->query('e'), $request->query('a'), $t, $request);
         }
@@ -82,8 +81,7 @@ class PublicContractController extends Controller
     {
         [$r, $v] = $this->resolve($request, $recipient);
         if (! $r || ! $v->{$column}) return $this->notFound();
-        DocumentAccessEvent::create(['business_id' => $v->business_id, 'contract_version_id' => $v->id, 'event' => 'contract_downloaded',
-            'probable_automation' => PublicLinkService::looksAutomated($request->userAgent()), 'ip' => $request->ip(), 'user_agent' => mb_substr((string) $request->userAgent(), 0, 255)]);
+        app(ClientActivity::class)->record($request, ['business_id' => $v->business_id, 'contract_version_id' => $v->id, 'event' => 'contract_downloaded'], $r->email);
 
         return app(DocumentStore::class)->download(PrivateDocument::where('business_id', $v->business_id)->findOrFail($v->{$column}), $name, $request->boolean('inline'));
     }

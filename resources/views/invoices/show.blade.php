@@ -11,6 +11,10 @@
         </p>
     </div>
     <div class="flex flex-wrap gap-2">
+        @if ($invoice->isIssued() && $invoice->balance_cents > 0 && $ctx->can('invoices.send'))
+            @include('partials.reminder-toggle', ['action' => $bu.'/invoices/'.$invoice->id.'/auto-reminders', 'on' => $invoice->autoRemindersOn($biz),
+                'hint' => 'unviewed every '.$biz->reminder('invoice_unviewed')['every_days'].' days, past due every '.$biz->reminder('invoice_overdue')['every_days'].' days'])
+        @endif
         <a class="btn" href="{{ $bu }}/invoices/{{ $invoice->id }}/preview" target="_blank" rel="noopener">Preview invoice</a>
         @if ($invoice->isDraft())
             @if ($ctx->can('invoices.manage'))<a class="btn" href="{{ $bu }}/invoices/{{ $invoice->id }}/edit">Edit</a>@endif

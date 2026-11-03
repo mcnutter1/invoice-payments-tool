@@ -219,6 +219,16 @@ class ContractController extends Controller
         return back()->with('status', 'Reminder queued.');
     }
 
+    public function toggleReminders(int $id)
+    {
+        $c = $this->contract($id);
+        $on = ! $c->autoRemindersOn($this->biz());
+        $c->update(['auto_reminders' => $on]);
+        Audit::log($this->biz(), 'contract.auto_reminders_'.($on ? 'on' : 'off'), $c);
+
+        return back()->with('status', 'Automatic signature reminders turned '.($on ? 'on' : 'off').' for this agreement.');
+    }
+
     public function uploadExternal(Request $request, int $id)
     {
         $data = $request->validate(['file' => ['required', 'file', 'max:'.config('finance.storage.max_upload_kb')], 'provenance' => ['required', 'string', 'max:1000']]);

@@ -40,7 +40,7 @@
         </tbody></table>
         <p class="card-body pt-2 text-sm text-slate-600">Unapplied amount: <strong data-unapplied>$0.00</strong> — held as customer credit (not income) until applied or refunded.</p>
     </div>
-    <label class="flex items-center gap-2 text-sm"><input class="check" type="checkbox" name="send_receipt" value="1" checked> Email a receipt to the client</label>
+    <label class="flex items-center gap-2 text-sm"><input class="check" type="checkbox" name="send_receipt" value="1" checked> Email the client a thank-you with the paid invoice</label>
     <div class="flex gap-2"><button class="btn btn-primary">Record payment</button><a href="{{ $bu }}/payments" class="btn">Cancel</a></div>
 </form>
 @endif

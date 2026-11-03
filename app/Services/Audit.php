@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\AuditEvent;
 use App\Models\Business;
+use App\Services\PublicAccess\GeoIp;
 use App\Support\Context;
 use Illuminate\Database\Eloquent\Model;
 
@@ -22,6 +23,7 @@ class Audit
     ): AuditEvent {
         $ctx = app(Context::class);
         $req = app()->runningInConsole() ? null : request();
+        $geo = $req ? app(GeoIp::class)->lookup($req->ip()) : ['location' => null, 'network' => null];
 
         return AuditEvent::create([
             'business_id' => $business instanceof Business ? $business->id : $business,
@@ -33,6 +35,8 @@ class Audit
             'correlation_id' => $ctx->correlationId,
             'ip' => $req?->ip(),
             'user_agent' => $req ? substr((string) $req->userAgent(), 0, 255) : null,
+            'location' => $geo['location'],
+            'network' => $geo['network'],
             'before' => self::sanitize($before),
             'after' => self::sanitize($after),
             'reason' => $reason,

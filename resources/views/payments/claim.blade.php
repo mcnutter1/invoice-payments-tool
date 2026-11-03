@@ -29,7 +29,7 @@
                 <div><label class="label" for="reference">Bank reference</label><input class="input" id="reference" name="reference" value="{{ $claim->reference }}"></div>
             </div>
             <label class="flex items-start gap-2 text-sm"><input class="check mt-0.5" type="checkbox" name="evidence_checked" value="1" required> I verified this payment in our bank account or have the physical check.</label>
-            <label class="flex items-center gap-2 text-sm"><input class="check" type="checkbox" name="send_receipt" value="1" checked> Email the client a receipt</label>
+            <label class="flex items-center gap-2 text-sm"><input class="check" type="checkbox" name="send_receipt" value="1" checked> Email the client a thank-you with the paid invoice</label>
             <button class="btn btn-primary">Confirm &amp; record payment</button>
         </form>
         <form method="post" action="{{ $bu }}/claims/{{ $claim->id }}/clarify" class="card card-body space-y-2">@csrf

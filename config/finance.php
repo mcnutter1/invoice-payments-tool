@@ -69,6 +69,14 @@ return [
         'status_file' => env('FINANCE_BACKUP_STATUS_FILE', '/var/lib/mcnutt-finance/backup-status.json'),
     ],
 
+    // IP → approximate location/network for audit and client activity (ipinfo.io). Private IPs are never looked up.
+    'geoip' => [
+        'enabled' => (bool) env('FINANCE_GEOIP_ENABLED', true),
+        'token' => env('IPINFO_TOKEN'),
+        'timeout' => 2,
+        'cache_days' => 30,
+    ],
+
     'trusted_proxies' => env('TRUSTED_PROXIES'),
 
     // Comma list of central principal IDs allowed to manage platform role mappings (no tenant access implied).

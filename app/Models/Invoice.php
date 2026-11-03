@@ -28,7 +28,14 @@ class Invoice extends Model
         'issued_at' => 'datetime',
         'voided_at' => 'datetime',
         'last_reminder_at' => 'datetime',
+        'auto_reminders' => 'boolean',
     ];
+
+    /** Per-invoice override, else on when either invoice reminder type is enabled for the business. */
+    public function autoRemindersOn(Business $b): bool
+    {
+        return $this->auto_reminders ?? ($b->reminder('invoice_unviewed')['enabled'] || $b->reminder('invoice_overdue')['enabled']);
+    }
 
     protected static function booted(): void
     {
@@ -52,6 +59,16 @@ class Invoice extends Model
     public function latestDocument(): ?InvoiceDocumentVersion
     {
         return $this->documentVersions()->first();
+    }
+
+    /** Who this invoice was actually emailed to, else its saved recipients, else the client's billing email. */
+    public function deliveryRecipients(): array
+    {
+        $sent = EmailOutbox::where('business_id', $this->business_id)->where('invoice_id', $this->id)
+            ->whereIn('kind', ['invoice', 'reminder'])->whereNotIn('status', ['cancelled', 'failed'])
+            ->distinct()->pluck('to_email')->all();
+
+        return array_values(array_unique(array_map('strtolower', $sent ?: ($this->recipients ?: array_filter([$this->client?->billingEmail()])))));
     }
 
     public function isDraft(): bool { return $this->status === 'draft'; }

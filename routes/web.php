@@ -27,6 +27,7 @@ Route::middleware(['public.doc', 'throttle:public'])->group(function () {
     Route::get('/i/v/{ulid}/pay', [C\PublicInvoiceController::class, 'pay']);
     Route::post('/i/v/{ulid}/event', [C\PublicInvoiceController::class, 'event'])->withoutMiddleware('throttle:public')->middleware('throttle:tracking');
     Route::get('/i/v/{ulid}/pdf', [C\PublicInvoiceController::class, 'pdf']);
+    Route::get('/i/v/{ulid}/paid-pdf', [C\PublicInvoiceController::class, 'paidPdf']);
     Route::get('/i/v/{ulid}/remittance', [C\PublicInvoiceController::class, 'remittance']);
     Route::get('/i/v/{ulid}/agreement', [C\PublicInvoiceController::class, 'agreement']);
     Route::get('/i/v/{ulid}/agreement/certificate', [C\PublicInvoiceController::class, 'agreementCertificate']);
@@ -111,6 +112,7 @@ Route::middleware('central')->group(function () {
             Route::get('/invoices/{id}/send', [C\InvoiceController::class, 'sendForm']);
             Route::post('/invoices/{id}/send', [C\InvoiceController::class, 'send'])->middleware('throttle:sensitive');
             Route::post('/invoices/{id}/revoke-links', [C\InvoiceController::class, 'revokeLinks']);
+            Route::post('/invoices/{id}/auto-reminders', [C\InvoiceController::class, 'toggleReminders']);
             Route::post('/invoices/bulk-send', [C\InvoiceController::class, 'bulkSend'])->middleware('throttle:sensitive');
             Route::post('/outbox/{id}/resend', [C\InvoiceController::class, 'resendReviewed']);
         });
@@ -236,6 +238,7 @@ Route::middleware('central')->group(function () {
             Route::post('/contracts/{id}/send', [C\ContractController::class, 'send']);
             Route::post('/contracts/{id}/void', [C\ContractController::class, 'void']);
             Route::post('/contract-recipients/{id}/remind', [C\ContractController::class, 'remind']);
+            Route::post('/contracts/{id}/auto-reminders', [C\ContractController::class, 'toggleReminders']);
         });
         Route::post('/contracts/{id}/milestones/{milestone}/invoice', [C\ContractController::class, 'invoiceMilestone'])->middleware('perm:invoices.manage');
         Route::post('/contracts/{id}/billing/run', [C\ContractController::class, 'runBilling'])->middleware('perm:invoices.manage');
@@ -265,6 +268,7 @@ Route::middleware('central')->group(function () {
         Route::get('/settings/logo', [C\SettingsController::class, 'logo'])->middleware('perm:business.view');
         Route::middleware('perm:business.manage')->group(function () {
             Route::post('/settings/profile', [C\SettingsController::class, 'updateProfile']);
+            Route::post('/settings/reminders', [C\SettingsController::class, 'updateReminders']);
             Route::post('/settings/branding', [C\SettingsController::class, 'updateBranding']);
             Route::post('/settings/payments', [C\SettingsController::class, 'updatePayments'])->middleware('central:fresh');
             Route::post('/settings/email', [C\SettingsController::class, 'updateEmail']);
