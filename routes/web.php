@@ -239,6 +239,7 @@ Route::middleware('central')->group(function () {
             Route::post('/contracts/{id}/void', [C\ContractController::class, 'void']);
             Route::post('/contract-recipients/{id}/remind', [C\ContractController::class, 'remind']);
             Route::post('/contracts/{id}/auto-reminders', [C\ContractController::class, 'toggleReminders']);
+            Route::post('/contracts/{id}/send-executed', [C\ContractController::class, 'sendExecuted'])->middleware('throttle:sensitive');
         });
         Route::post('/contracts/{id}/milestones/{milestone}/invoice', [C\ContractController::class, 'invoiceMilestone'])->middleware('perm:invoices.manage');
         Route::post('/contracts/{id}/billing/run', [C\ContractController::class, 'runBilling'])->middleware('perm:invoices.manage');

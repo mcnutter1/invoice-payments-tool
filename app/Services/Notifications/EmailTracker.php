@@ -35,6 +35,8 @@ class EmailTracker
         'paid_pdf' => 'Download paid invoice',
         'sign' => 'Review & sign',
         'agreement' => 'View agreement',
+        'signed_pdf' => 'Download signed PDF',
+        'certificate' => 'Signature certificate',
     ];
 
     public const PIXEL_GIF = 'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
@@ -59,6 +61,9 @@ class EmailTracker
         }
         if ($e->event === 'payment_details_copied' && $e->detail) {
             return 'Copied payment details ('.str_replace('_', ' ', $e->detail).')';
+        }
+        if ($e->event === 'contract_downloaded' && $e->detail) {
+            return ['signed' => 'Downloaded the signed agreement', 'certificate' => 'Downloaded the signature certificate'][$e->detail] ?? 'Downloaded the agreement';
         }
 
         return self::LABELS[$e->event] ?? ucfirst(str_replace('_', ' ', $e->event));

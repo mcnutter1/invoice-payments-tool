@@ -38,8 +38,9 @@ class PublicContractController extends Controller
         if ($request->query('e')) {
             app(\App\Services\Notifications\EmailTracker::class)->recordClick($request->query('e'), $request->query('a'), $t, $request);
         }
+        $suffix = ['signed' => '/signed', 'certificate' => '/certificate'][$request->query('d')] ?? '';
 
-        return redirect('/c/r/'.$t->contract_recipient_id);
+        return redirect('/c/r/'.$t->contract_recipient_id.$suffix);
     }
 
     /** @return array{0:?ContractRecipient,1:?ContractVersion,2:?PublicToken} */
@@ -61,7 +62,12 @@ class PublicContractController extends Controller
         if (! $r) return $this->notFound();
         $business = Business::find($v->business_id);
         $signing = $t->purpose === 'contract_sign' && in_array($v->status, ['sent', 'partially_signed'], true) && $r->isSigner() && in_array($r->status, ['sent', 'viewed', 'verified'], true);
-        if ($signing) $this->sig->recordView($v, $r);
+        if ($signing) {
+            $this->sig->recordView($v, $r);
+        } else {
+            // Signing views are in the signature trail; other views (e.g. completed agreements) are tracked here.
+            app(ClientActivity::class)->record($request, ['business_id' => $v->business_id, 'public_token_id' => $t->id, 'contract_version_id' => $v->id, 'event' => 'contract_viewed'], $r->email);
+        }
 
         return view('public.contract', [
             'recipient' => $r->fresh(),
@@ -74,14 +80,16 @@ class PublicContractController extends Controller
             'consent' => SignatureService::CONSENT_TEXT,
             'logo' => app(DocumentStore::class)->dataUri($business->logo),
             'accent' => $business->brand('accent'),
+            'evidence' => $v->status === 'completed' ? $this->sig->evidence($v) : null,
         ]);
     }
 
     private function serve(Request $request, int $recipient, string $column, string $name)
     {
-        [$r, $v] = $this->resolve($request, $recipient);
+        [$r, $v, $t] = $this->resolve($request, $recipient);
         if (! $r || ! $v->{$column}) return $this->notFound();
-        app(ClientActivity::class)->record($request, ['business_id' => $v->business_id, 'contract_version_id' => $v->id, 'event' => 'contract_downloaded'], $r->email);
+        app(ClientActivity::class)->record($request, ['business_id' => $v->business_id, 'public_token_id' => $t->id, 'contract_version_id' => $v->id, 'event' => 'contract_downloaded',
+            'detail' => ['signed_document_id' => 'signed', 'certificate_document_id' => 'certificate'][$column] ?? 'document'], $r->email);
 
         return app(DocumentStore::class)->download(PrivateDocument::where('business_id', $v->business_id)->findOrFail($v->{$column}), $name, $request->boolean('inline'));
     }

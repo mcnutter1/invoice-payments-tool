@@ -14,11 +14,12 @@
 
 @if ($version->status === 'completed')
     <div class="card card-body mb-4 border-emerald-200 bg-emerald-50">
-        <h2 class="text-emerald-900">This agreement is fully signed</h2>
-        <p class="mt-1 text-sm text-emerald-900">Download your copy and the signature certificate for your records.</p>
+        <h2 class="text-emerald-900">This agreement is fully executed</h2>
+        <p class="mt-1 text-sm text-emerald-900">All parties have signed. Signatures and signing evidence are shown below the agreement; download your copy and the signature certificate for your records.</p>
         <div class="mt-3 grid gap-2 sm:flex">
             @if ($version->signed_document_id)<a class="btn btn-primary" href="/c/r/{{ $recipient->id }}/signed">Download signed agreement</a>@endif
             @if ($version->certificate_document_id)<a class="btn" href="/c/r/{{ $recipient->id }}/certificate">Signature certificate</a>@endif
+            <a class="btn" href="#signatures">Signatures &amp; evidence ↓</a>
         </div>
     </div>
 @elseif ($recipient->status === 'signed')
@@ -51,6 +52,50 @@
     @slot('actions')@if ($version->rendered_document_id)<a class="btn btn-sm" href="/c/r/{{ $recipient->id }}/document">PDF</a>@endif @endslot
     @slot('foot')<span class="break-all font-mono">SHA-256 {{ $version->sha256 }}</span><a href="/c/r/{{ $recipient->id }}/consent">E-sign consent (copy)</a>@endslot
 @endcomponent
+
+@if ($evidence)
+<section id="signatures" class="mx-auto mt-6 max-w-3xl scroll-mt-4 space-y-4">
+    <div class="card"><div class="card-head"><h2>Signatures</h2><span class="chip chip-green">Fully executed {{ $version->completed_at?->timezone($business->timezone)->format('M j, Y') }}</span></div>
+        <div class="card-body grid gap-4 sm:grid-cols-2">
+        @foreach ($evidence['signers'] as $s)
+            @php $p = $s['recipient']; @endphp
+            <div class="rounded-md border border-slate-200 p-3">
+                <div class="text-xs text-slate-500">{{ $p->role === 'countersigner' ? 'For '.$business->name() : 'Client signer' }}</div>
+                @if ($s['image'])
+                    <img src="{{ $s['image'] }}" alt="Signature of {{ $p->typed_name ?? $p->name }}" class="mt-1 max-h-24 max-w-full object-contain">
+                @elseif ($p->signed_at)
+                    <div class="mt-1 break-words border-b border-slate-300 py-1 font-serif text-3xl italic text-slate-800">{{ $p->typed_name ?? $p->name }}</div>
+                @endif
+                <div class="mt-2 text-sm font-medium">{{ $p->typed_name ?? $p->name }}{{ $p->typed_title ? ', '.$p->typed_title : '' }}</div>
+                <div class="text-xs text-slate-500">{{ $p->email }}</div>
+                @if ($p->signed_at)
+                    <div class="mt-1 text-xs text-slate-600">Signed {{ $p->signed_at->timezone($business->timezone)->format('M j, Y g:i:sa T') }} · {{ $p->signature_kind === 'draw' ? 'drawn' : 'typed' }} · {{ $p->verificationLabel() }}</div>
+                    @if ($p->ip)<div class="text-xs text-slate-500">IP {{ $p->ip }}</div>@endif
+                    @if ($p->signature_hash)<div class="break-all font-mono text-[10px] text-slate-500">Signature hash {{ $p->signature_hash }}</div>@endif
+                @endif
+            </div>
+        @endforeach
+        </div>
+    </div>
+    <div class="card"><div class="card-head"><h2>Signing evidence</h2></div>
+        <div class="card-body space-y-3 text-sm">
+            <dl class="grid gap-1 text-xs sm:grid-cols-3">
+                @if ($version->sha256)<dt class="text-slate-500">Original document SHA-256</dt><dd class="break-all font-mono sm:col-span-2">{{ $version->sha256 }}</dd>@endif
+                @if ($version->signed_sha256)<dt class="text-slate-500">Signed document SHA-256</dt><dd class="break-all font-mono sm:col-span-2">{{ $version->signed_sha256 }}</dd>@endif
+            </dl>
+            @if ($evidence['events']->isNotEmpty())
+            <div class="overflow-x-auto"><table class="tbl text-xs"><thead><tr><th>#</th><th>When (UTC)</th><th>Event</th><th>Recipient</th><th>IP</th></tr></thead><tbody>
+                @foreach ($evidence['events'] as $e)
+                    <tr><td>{{ $e->seq }}</td><td class="whitespace-nowrap">{{ $e->created_at->utc()->format('Y-m-d H:i:s') }}</td><td>{{ str_replace('_', ' ', $e->event) }}</td>
+                        <td>{{ optional($evidence['recipients']->firstWhere('id', $e->contract_recipient_id))->email }}</td><td>{{ $e->ip }}</td></tr>
+                @endforeach
+            </tbody></table></div>
+            @endif
+            <p class="hint">Email verification confirms access to the recipient’s inbox at signing time; it does not verify legal identity. SHA-256 values are integrity evidence, not a certificate-based digital signature. The signature certificate PDF contains this record plus the electronic-records consent.</p>
+        </div>
+    </div>
+</section>
+@endif
 
 @if ($signing)
 <section id="sign" class="mx-auto mt-6 max-w-3xl scroll-mt-4 space-y-4">

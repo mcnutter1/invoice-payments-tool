@@ -28,6 +28,9 @@
             <a class="btn" href="{{ $bu }}/contracts/{{ $contract->id }}/versions/{{ $current->version }}/document" target="_blank" rel="noopener">Review PDF</a>
             <form method="post" action="{{ $bu }}/contracts/{{ $contract->id }}/send" data-confirm="Send for signature to all eligible signers?">@csrf<button class="btn btn-primary">Send for signature</button></form>
         @endif
+        @if ($current && $current->status === 'completed' && $ctx->can('contracts.send'))
+            <form method="post" action="{{ $bu }}/contracts/{{ $contract->id }}/send-executed" data-confirm="Email the fully executed agreement (signed PDF, certificate and online copy) to all parties?">@csrf<button class="btn">Email executed copy</button></form>
+        @endif
         @if ($current && $current->status === 'completed' && $ctx->can('contracts.manage'))
             <form method="post" action="{{ $bu }}/contracts/{{ $contract->id }}/amend" data-confirm="Start an amendment? The signed agreement stays unchanged.">@csrf<button class="btn">Amend</button></form>
         @endif
@@ -131,6 +134,7 @@
             @endforeach
         </ul></div>
         @endif
+        @include('partials.activity')
         @if ($ctx->can('contracts.send') && $current && in_array($current->status, ['draft', 'prepared', 'sent', 'partially_signed']))
             <form method="post" action="{{ $bu }}/contracts/{{ $contract->id }}/void" class="card card-body space-y-2" data-confirm="Void this agreement version? It can no longer be signed.">@csrf
                 <label class="label" for="void-reason">Void {{ in_array($current->status, ['sent', 'partially_signed']) ? 'envelope' : 'agreement' }}</label><input class="input" id="void-reason" name="reason" required placeholder="Reason">

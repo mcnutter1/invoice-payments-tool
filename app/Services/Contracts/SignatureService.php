@@ -244,13 +244,40 @@ class SignatureService
         ]));
         PublicToken::where('contract_version_id', $v->id)->where('purpose', 'contract_sign')->whereNull('revoked_at')->update(['revoked_at' => now()]);
 
-        foreach ($v->recipients()->get() as $r) {
-            [$t, $raw] = $this->links->issue($business, 'contract_view', [
+        $this->sendExecutedCopies($v->fresh());
+        Audit::log($business, $isAmendment ? 'contract.amendment_completed' : 'contract.completed', $v, null, ['signed_sha256' => $signed->sha256], null, 'system');
+    }
+
+    /** Email every party a link to the fully executed agreement (web view with signatures and evidence, signed PDF, certificate). */
+    public function sendExecutedCopies(ContractVersion $v): int
+    {
+        if ($v->status !== 'completed') throw new DomainException('Only fully executed agreements can be sent.');
+        $business = Business::findOrFail($v->business_id);
+        $recipients = $v->recipients()->get();
+        foreach ($recipients as $r) {
+            [, $raw] = $this->links->issue($business, 'contract_view', [
                 'contract_version_id' => $v->id, 'contract_recipient_id' => $r->id,
                 'allowed_actions' => ['view', 'download'], 'recipient_email' => $r->email,
             ], 90);
-            $this->email->queueContractNotice($r, $v, 'contract_completed', url('/c/'.$raw));
+            $this->email->queueExecutedCopy($r, $v, url('/c/'.$raw), $recipients);
         }
-        Audit::log($business, $isAmendment ? 'contract.amendment_completed' : 'contract.completed', $v, null, ['signed_sha256' => $signed->sha256], null, 'system');
+        Audit::log($business, 'contract.executed_copies_queued', $v, null, ['recipients' => $recipients->pluck('email')->all()]);
+
+        return $recipients->count();
+    }
+
+    /** Signatures and signing evidence for the web view of a completed agreement. */
+    public function evidence(ContractVersion $v): array
+    {
+        $recipients = $v->recipients()->get();
+
+        return [
+            'signers' => $recipients->where('role', '!=', 'cc')->values()->map(fn ($r) => [
+                'recipient' => $r,
+                'image' => $r->signature_document_id ? $this->docs->dataUri(\App\Models\PrivateDocument::where('business_id', $v->business_id)->find($r->signature_document_id)) : null,
+            ]),
+            'recipients' => $recipients,
+            'events' => SignatureEvent::where('contract_version_id', $v->id)->orderBy('seq')->get(),
+        ];
     }
 }

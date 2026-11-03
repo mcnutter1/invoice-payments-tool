@@ -3,14 +3,19 @@
 namespace App\Http\Controllers;
 
 use App\Exceptions\DomainException;
+use App\Models\AuditEvent;
 use App\Models\Client;
 use App\Models\Contract;
 use App\Models\ContractMilestone;
 use App\Models\ContractRecipient;
 use App\Models\ContractTemplate;
 use App\Models\ContractVersion;
+use App\Models\DocumentAccessEvent;
+use App\Models\EmailOutbox;
 use App\Models\Membership;
 use App\Models\PrivateDocument;
+use App\Models\PublicToken;
+use App\Models\SignatureEvent;
 use App\Services\Access\PermissionService;
 use App\Services\Audit;
 use App\Services\Contracts\ContractService;
@@ -142,7 +147,86 @@ class ContractController extends Controller
             'myCountersign' => $current ? $current->recipients->first(fn ($r) => $r->countersigner_user_id === $me->id && SignatureService::canCountersignNow($current, $r)) : null,
             'deleteBlocker' => $this->service->deleteBlocker($c),
             'renewals' => Contract::where('business_id', $c->business_id)->where('renewed_from_id', $c->id)->get(['id', 'number', 'status']),
+            'timeline' => $this->timeline($c),
         ]);
+    }
+
+    private const AUDIT_LABELS = [
+        'contract.created' => 'Agreement created', 'contract.draft_updated' => 'Draft updated', 'contract.client_changed' => 'Client changed',
+        'contract.prepared' => 'Version locked', 'contract.sent' => 'Sent for signature', 'contract.reminder_queued' => 'Signing reminder queued',
+        'contract.voided' => 'Voided', 'contract.completed' => 'All parties signed', 'contract.amendment_started' => 'Amendment started',
+        'contract.amendment_completed' => 'Amendment completed', 'contract.external_uploaded' => 'Externally signed copy uploaded',
+        'contract.terminated' => 'Terminated', 'contract.term_ended' => 'Term ended', 'contract.reactivated' => 'Reactivated',
+        'contract.renewal_started' => 'Renewal started', 'contract.auto_reminders_on' => 'Automatic reminders turned on',
+        'contract.auto_reminders_off' => 'Automatic reminders turned off', 'contract.milestone_invoice_created' => 'Milestone invoice created',
+        'contract.executed_copies_queued' => 'Fully executed copy emailed to all parties',
+        'contract.recurring_created' => 'Recurring billing created', 'contract.billing_failed' => 'Billing failed',
+    ];
+
+    private const EMAIL_LABELS = [
+        'contract_invitation' => 'Signing invitation', 'contract_reminder' => 'Signing reminder', 'signing_code' => 'Verification code email',
+        'contract_completed' => 'Fully executed copy email', 'contract_voided' => 'Withdrawal notice', 'contract_declined' => 'Declined notice',
+    ];
+
+    private const SIGNER_LABELS = [
+        'viewed' => 'Opened the agreement to sign', 'verification_code_sent' => 'Requested a verification code',
+        'email_verified' => 'Verified their email', 'verification_failed' => 'Entered an incorrect code',
+        'consented' => 'Consented to sign electronically', 'signed' => 'Signed the agreement', 'declined' => 'Declined to sign',
+    ];
+
+    /** Staff actions, email delivery, signer actions and client access merged newest-first. */
+    private function timeline(Contract $c): array
+    {
+        $bid = $c->business_id;
+        $versionIds = $c->versions->pluck('id');
+        $audit = AuditEvent::with('actor')->where('business_id', $bid)->where('actor_type', '!=', 'client')
+            ->where(fn ($q) => $q->where(fn ($q) => $q->where('object_type', 'Contract')->where('object_id', $c->id))
+                ->orWhere(fn ($q) => $q->where('object_type', 'ContractVersion')->whereIn('object_id', $versionIds)))
+            ->latest('id')->limit(200)->get();
+        $outbox = EmailOutbox::where('business_id', $bid)->whereIn('contract_version_id', $versionIds)->latest('id')->limit(200)->get();
+        $access = DocumentAccessEvent::where('business_id', $bid)->whereIn('contract_version_id', $versionIds)->latest('id')->limit(200)->get();
+        $signer = SignatureEvent::where('business_id', $bid)->whereIn('contract_version_id', $versionIds)
+            ->whereNotNull('contract_recipient_id')->whereIn('event', array_keys(self::SIGNER_LABELS))->latest('id')->limit(200)->get();
+        $recipients = ContractRecipient::where('business_id', $bid)->whereIn('contract_version_id', $versionIds)->get()->keyBy('id');
+        $tokenEmails = PublicToken::whereIn('id', $access->pluck('public_token_id')->filter()->unique())->pluck('recipient_email', 'id');
+        // Signature events store only the IP; reuse locations already resolved for the same IP.
+        $geo = $access->toBase()->concat(AuditEvent::where('business_id', $bid)->where('actor_type', 'client')->where('object_type', 'ContractVersion')
+            ->whereIn('object_id', $versionIds)->whereNotNull('location')->limit(200)->get())
+            ->filter(fn ($e) => $e->ip && $e->location)->mapWithKeys(fn ($e) => [$e->ip => [$e->location, $e->network]]);
+        $where = fn ($ip, $ua, bool $automated, ?string $location = null, ?string $network = null) => implode(' · ', array_filter([
+            $ip ? 'IP '.$ip : null, $location ?? ($geo[$ip][0] ?? null), $network ?? ($geo[$ip][1] ?? null),
+            \App\Services\PublicAccess\ClientActivity::source($ua, $automated),
+        ]));
+
+        $items = [];
+        foreach ($audit as $a) {
+            $items[] = ['at' => $a->created_at, 'kind' => 'staff', 'label' => self::AUDIT_LABELS[$a->action] ?? $a->action,
+                'who' => $a->actor?->label() ?? ucfirst((string) $a->actor_type), 'detail' => $a->reason];
+        }
+        foreach ($outbox as $o) {
+            $label = self::EMAIL_LABELS[$o->kind] ?? ucfirst(str_replace('_', ' ', $o->kind));
+            if ($o->accepted_at) {
+                $items[] = ['at' => $o->accepted_at, 'kind' => 'email', 'label' => $label.' accepted by mail service', 'who' => $o->to_email, 'detail' => null];
+            } elseif (in_array($o->status, ['failed', 'delivery_unknown', 'cancelled'], true)) {
+                $items[] = ['at' => $o->updated_at, 'kind' => 'email', 'label' => $label.' '.str_replace('_', ' ', $o->status), 'who' => $o->to_email, 'detail' => $o->last_error];
+            }
+        }
+        $emails = $outbox->keyBy('id');
+        foreach ($access as $e) {
+            $items[] = ['at' => $e->created_at, 'kind' => 'client', 'label' => \App\Services\Notifications\EmailTracker::label($e),
+                'who' => ($e->email_outbox_id ? ($emails[$e->email_outbox_id]->to_email ?? null) : null) ?? $tokenEmails[$e->public_token_id] ?? 'Client',
+                'automated' => $e->probable_automation, 'detail' => $where($e->ip, $e->user_agent, $e->probable_automation, $e->location, $e->network)];
+        }
+        foreach ($signer as $s) {
+            $r = $recipients[$s->contract_recipient_id] ?? null;
+            $client = $r?->role !== 'countersigner';
+            $items[] = ['at' => $s->created_at, 'kind' => $client ? 'client' : 'staff', 'label' => self::SIGNER_LABELS[$s->event],
+                'who' => $r ? $r->name.' <'.$r->email.'>' : 'Signer',
+                'detail' => $client ? $where($s->ip, $s->user_agent, \App\Services\PublicAccess\PublicLinkService::looksAutomated($s->user_agent)) : null];
+        }
+        usort($items, fn ($x, $y) => $y['at'] <=> $x['at']);
+
+        return $items;
     }
 
     public function edit(int $id)
@@ -217,6 +301,14 @@ class ContractController extends Controller
         $this->service->remind($r);
 
         return back()->with('status', 'Reminder queued.');
+    }
+
+    public function sendExecuted(int $id, SignatureService $sig)
+    {
+        $v = $this->contract($id)->currentVersion ?? throw new DomainException('No version.');
+        $n = $sig->sendExecutedCopies($v);
+
+        return back()->with('status', "Queued the fully executed copy to {$n} recipient(s).");
     }
 
     public function toggleReminders(int $id)

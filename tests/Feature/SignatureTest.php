@@ -72,10 +72,28 @@ class SignatureTest extends TestCase
         app(OutboxProcessor::class)->run(20, microtime(true) + 10);
         $viewToken = $this->lastBodyMatching('#/c/([A-Za-z0-9_-]{40,64})#');
         $this->assertNotSame($token, $viewToken);
+        $done = end(LogNotificationGateway::$sent);
+        $this->assertSame('Fully executed: Retainer', $done->subject);
+        $this->assertStringContainsString('Download signed PDF', $done->body);
+        $this->assertStringContainsString('Signature certificate', $done->body);
+        $this->get('/c/'.$viewToken.'?d=signed')->assertRedirect('/c/r/'.$r->id.'/signed');
         $this->get('/c/'.$viewToken)->assertRedirect('/c/r/'.$r->id);
-        $this->get('/c/r/'.$r->id)->assertOk()->assertSee('fully signed');
+        $this->get('/c/r/'.$r->id)->assertOk()->assertSee('fully executed')->assertSee('Signing evidence')
+            ->assertSee('Signature hash')->assertSee($v->signed_sha256)->assertSee('Pat Signer');
         $this->get('/c/r/'.$r->id.'/certificate')->assertOk();
         $this->get('/c/r/'.$r->id.'/signed')->assertOk();
+
+        // Staff can re-send the executed copy to every party.
+        $this->flushSession();
+        $sentBefore = \App\Models\EmailOutbox::where('kind', 'contract_completed')->count();
+        $this->signIn($contract->business->memberships()->first()->user)->post("/b/{$biz->ulid}/contracts/{$contract->id}/send-executed")->assertSessionHas('status');
+        $this->assertGreaterThan($sentBefore, \App\Models\EmailOutbox::where('kind', 'contract_completed')->count());
+
+        $this->flushSession();
+        $this->signIn($contract->business->memberships()->first()->user)->get("/b/{$biz->ulid}/contracts/{$contract->id}")->assertOk()
+            ->assertSee('Activity')->assertSee('Sent for signature')->assertSee('Signing invitation accepted by mail service')
+            ->assertSee('Opened the secure link')->assertSee('Opened the agreement to sign')->assertSee('Verified their email')
+            ->assertSee('Signed the agreement')->assertSee('Opened the agreement')->assertSee('Pat Signer');
     }
 
     public function test_voided_envelope_cannot_be_signed_and_sent_version_is_immutable(): void
@@ -474,6 +492,6 @@ class SignatureTest extends TestCase
         $this->assertSame('draw', $r->fresh()->signature_kind);
         $this->assertSame('completed', $v->fresh()->status);
         // The signer lands on their completed copy instead of a dead link.
-        $this->get('/c/r/'.$r->id)->assertOk()->assertSee('fully signed');
+        $this->get('/c/r/'.$r->id)->assertOk()->assertSee('fully executed')->assertSee('alt="Signature of', false);
     }
 }

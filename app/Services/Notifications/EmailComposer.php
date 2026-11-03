@@ -249,6 +249,38 @@ class EmailComposer
             ], ['contract_version_id' => $v->id, 'contract_recipient_id' => $r->id]);
     }
 
+    /** @param \Illuminate\Support\Collection<int, ContractRecipient> $parties */
+    public function queueExecutedCopy(ContractRecipient $r, ContractVersion $v, string $url, $parties): void
+    {
+        $business = Business::find($r->business_id);
+        $contract = $v->contract;
+        $tz = $business->timezone ?: 'America/New_York';
+        $signers = $parties->where('role', '!=', 'cc')->map(fn ($p) => [
+            ($p->typed_name ?: $p->name).($p->role === 'countersigner' ? ' ('.$business->name().')' : ''),
+            $p->signed_at ? 'Signed '.$p->signed_at->timezone($tz)->format('M j, Y g:ia T') : 'Signed',
+        ])->values()->all();
+        $this->queue($business, 'contract_completed', $r->email, 'Fully executed: '.$v->title, [
+            'tag' => 'Fully executed',
+            'preheader' => 'All parties have signed “'.$v->title.'”. Your executed copy is ready.',
+            'heading' => $v->title,
+            'greeting' => 'Hello '.$r->name.',',
+            'paragraphs' => [
+                'All parties have signed “'.$v->title.'”. The agreement is now fully executed.',
+                'View it online with every signature and the full signing evidence, or download the signed PDF and the signature certificate for your records.',
+            ],
+            'highlight' => ['label' => 'Fully executed', 'value' => $v->completed_at?->timezone($tz)->format('F j, Y') ?? now($tz)->format('F j, Y'),
+                'sub' => trim(($contract?->number ?? '').' · version '.$v->version, ' ·')],
+            'details' => array_merge($signers, [['Signed document SHA-256', substr((string) $v->signed_sha256, 0, 16).'…']]),
+            'buttons' => array_values(array_filter([
+                ['label' => 'View executed agreement', 'url' => $url, 'track' => 'agreement'],
+                $v->signed_document_id ? ['label' => 'Download signed PDF', 'url' => $url.'?d=signed', 'track' => 'signed_pdf'] : null,
+                $v->certificate_document_id ? ['label' => 'Signature certificate', 'url' => $url.'?d=certificate', 'track' => 'certificate'] : null,
+            ])),
+            'notes' => ['These secure links are personal to you and expire in 90 days. Please download a copy for your records.'],
+            'signoff' => 'Thank you,',
+        ], ['contract_version_id' => $v->id, 'contract_recipient_id' => $r->id]);
+    }
+
     public function queueSigningCode(ContractRecipient $r, string $code): void
     {
         $business = Business::find($r->business_id);
