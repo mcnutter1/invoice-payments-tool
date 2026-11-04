@@ -216,6 +216,71 @@ class RemindersTest extends TestCase
         $this->assertSame(1, EmailOutbox::where('kind', 'contract_reminder')->count());
     }
 
+    public function test_mail_security_prescans_are_not_counted_as_opens_or_clicks(): void
+    {
+        config(['finance.tracking.prefetch_seconds' => 30]);
+        Http::fake(fn ($r) => Http::response(['org' => str_contains($r->url(), '40.94.') ? 'AS8075 Microsoft Corporation' : 'AS7922 Comcast Cable', 'city' => 'X', 'country' => 'US']));
+        [$owner, $biz, $inv] = $this->sentInvoice([]);
+        $body = end(LogNotificationGateway::$sent)->body;
+        preg_match('#/t/o/([A-Za-z0-9_-]{43})\.gif#', $body, $px);
+        preg_match('#/i/([A-Za-z0-9_-]{43})\?e=([A-Za-z0-9_-]{43})&amp;a=view#', $body, $link);
+        $this->flushSession();
+        $browser = ['User-Agent' => 'Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 Chrome/120 Safari/537.36'];
+
+        // Seconds after delivery: an automatic pre-fetch.
+        $this->withHeaders($browser)->withServerVariables(['REMOTE_ADDR' => '73.1.2.3'])->get('/t/o/'.$px[1].'.gif')->assertOk();
+        $this->travel(5)->minutes();
+        // Microsoft-owned IP following the link: Defender pre-check, not a click.
+        $this->withHeaders($browser)->withServerVariables(['REMOTE_ADDR' => '40.94.1.1'])->get('/i/'.$link[1].'?e='.$link[2].'&a=view');
+        $this->flushSession();
+        $this->travel(11)->minutes();
+        // Apple Mail Privacy Protection preloads images with a bare user agent.
+        $this->withHeader('User-Agent', 'Mozilla/5.0')->withServerVariables(['REMOTE_ADDR' => '73.1.2.3'])->get('/t/o/'.$px[1].'.gif');
+        $row = EmailOutbox::first();
+        $this->assertSame(0, $row->open_count);
+        $this->assertSame(0, $row->click_count);
+        $this->assertNull($row->opened_at);
+        $this->assertSame(3, $row->scan_count);
+        $this->assertSame(0, DocumentAccessEvent::where('probable_automation', false)->count());
+        $reasons = DocumentAccessEvent::pluck('automation_reason')->implode('|');
+        $this->assertStringContainsString('of delivery', $reasons);
+        $this->assertStringContainsString('Microsoft email security', $reasons);
+        $this->assertStringContainsString('Apple Mail Privacy Protection', $reasons);
+
+        // A real person later.
+        $this->travel(15)->minutes();
+        $this->withHeaders($browser)->withServerVariables(['REMOTE_ADDR' => '73.1.2.3'])->get('/t/o/'.$px[1].'.gif');
+        $this->assertSame(1, $row->fresh()->open_count);
+
+        $this->flushSession();
+        $this->signIn($owner)->get("/b/{$biz->ulid}/invoices/{$inv->id}")->assertOk()
+            ->assertSee('Email pre-scanned by mail security (not an open)')->assertSee('Link pre-checked by mail security (not a click)')
+            ->assertSee('Pre-scanned')->assertSee('Opened the email');
+    }
+
+    public function test_next_pending_reminder_is_shown_in_activity(): void
+    {
+        [$owner, $biz, $inv] = $this->sentInvoice(['invoice_unviewed' => ['enabled' => true, 'every_days' => 3]]);
+        $this->signIn($owner)->get("/b/{$biz->ulid}/invoices/{$inv->id}")->assertOk()
+            ->assertSee('Reminder scheduled (invoice not yet viewed)')->assertSee('every 3 days')->assertSee('pending');
+
+        $this->signIn($owner)->post("/b/{$biz->ulid}/invoices/{$inv->id}/auto-reminders");
+        $this->signIn($owner)->get("/b/{$biz->ulid}/invoices/{$inv->id}")->assertOk()->assertDontSee('Reminder scheduled');
+
+        // Agreements show the next signing reminder per signer.
+        $biz->update(['reminder_settings' => ['contract_unsigned' => ['enabled' => true, 'every_days' => 4]]]);
+        $client = $this->makeClient($biz, 'Signer Co');
+        $svc = app(ContractService::class);
+        $c = $svc->create($biz, [
+            'client_id' => $client->id, 'title' => 'Retainer', 'template_id' => $biz->contractTemplates()->value('id'),
+            'effective_date' => '2026-07-01', 'scope' => 'Advisory', 'fees' => '$1,000 / month', 'signing_order' => 'parallel',
+            'signers' => [['name' => 'Pat Signer', 'email' => 'pat@example.test']],
+        ]);
+        $svc->send($svc->prepare($c->currentVersion));
+        $this->signIn($owner)->get("/b/{$biz->ulid}/contracts/{$c->id}")->assertOk()
+            ->assertSee('Signing reminder scheduled')->assertSee('every 4 days until signed');
+    }
+
     public function test_client_interactions_are_audited_with_ip_location_and_source(): void
     {
         Http::fake(['ipinfo.io/*' => Http::response(['city' => 'Austin', 'region' => 'Texas', 'country' => 'US', 'org' => 'AS7922 Comcast Cable'])]);

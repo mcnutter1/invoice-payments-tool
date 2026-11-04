@@ -123,6 +123,7 @@
                         <span class="flex flex-wrap items-center gap-1">@include('partials.status', ['s' => $o->status])
                             @if ($o->opened_at)<span class="chip chip-blue" title="First opened {{ $o->opened_at->timezone($biz->timezone)->format('M j, g:ia') }}">Opened{{ $o->open_count > 1 ? ' ×'.$o->open_count : '' }}</span>@endif
                             @if ($o->clicked_at)<span class="chip chip-green" title="First click {{ $o->clicked_at->timezone($biz->timezone)->format('M j, g:ia') }}">Clicked{{ $o->click_count > 1 ? ' ×'.$o->click_count : '' }}</span>@endif
+                            @if ($o->scanned_at)<span class="chip chip-gray" title="Mail security or privacy proxies pre-checked this email; not counted as an open or click">Pre-scanned{{ $o->scan_count > 1 ? ' ×'.$o->scan_count : '' }}</span>@endif
                             @if ($o->needs_review && $ctx->can('invoices.send') && $o->encrypted_body)
                                 <form method="post" action="{{ $bu }}/outbox/{{ $o->id }}/resend" class="inline" data-confirm="{{ $o->status === 'delivery_unknown' ? 'The mail service may already have accepted this message. Resend anyway?' : 'Re-queue this message?' }}">@csrf<button class="btn btn-sm">Resend after review</button></form>
                             @endif

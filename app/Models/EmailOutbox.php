@@ -23,6 +23,7 @@ class EmailOutbox extends Model
         'opened_at' => 'datetime',
         'last_opened_at' => 'datetime',
         'clicked_at' => 'datetime',
+        'scanned_at' => 'datetime',
         'needs_review' => 'boolean',
     ];
 

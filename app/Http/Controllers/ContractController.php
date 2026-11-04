@@ -193,9 +193,9 @@ class ContractController extends Controller
         $geo = $access->toBase()->concat(AuditEvent::where('business_id', $bid)->where('actor_type', 'client')->where('object_type', 'ContractVersion')
             ->whereIn('object_id', $versionIds)->whereNotNull('location')->limit(200)->get())
             ->filter(fn ($e) => $e->ip && $e->location)->mapWithKeys(fn ($e) => [$e->ip => [$e->location, $e->network]]);
-        $where = fn ($ip, $ua, bool $automated, ?string $location = null, ?string $network = null) => implode(' · ', array_filter([
+        $where = fn ($ip, $ua, bool $automated, ?string $location = null, ?string $network = null, ?string $reason = null) => implode(' · ', array_filter([
             $ip ? 'IP '.$ip : null, $location ?? ($geo[$ip][0] ?? null), $network ?? ($geo[$ip][1] ?? null),
-            \App\Services\PublicAccess\ClientActivity::source($ua, $automated),
+            \App\Services\PublicAccess\ClientActivity::source($ua, $automated, $reason),
         ]));
 
         $items = [];
@@ -215,7 +215,7 @@ class ContractController extends Controller
         foreach ($access as $e) {
             $items[] = ['at' => $e->created_at, 'kind' => 'client', 'label' => \App\Services\Notifications\EmailTracker::label($e),
                 'who' => ($e->email_outbox_id ? ($emails[$e->email_outbox_id]->to_email ?? null) : null) ?? $tokenEmails[$e->public_token_id] ?? 'Client',
-                'automated' => $e->probable_automation, 'detail' => $where($e->ip, $e->user_agent, $e->probable_automation, $e->location, $e->network)];
+                'automated' => $e->probable_automation, 'detail' => $where($e->ip, $e->user_agent, $e->probable_automation, $e->location, $e->network, $e->automation_reason)];
         }
         foreach ($signer as $s) {
             $r = $recipients[$s->contract_recipient_id] ?? null;
@@ -226,7 +226,19 @@ class ContractController extends Controller
         }
         usort($items, fn ($x, $y) => $y['at'] <=> $x['at']);
 
-        return $items;
+        $planner = app(\App\Services\Notifications\ReminderPlanner::class);
+        $business = $this->biz();
+        $pending = [];
+        if ($current = $c->versions->firstWhere('id', $c->current_version_id)) {
+            foreach ($recipients->where('contract_version_id', $current->id) as $r) {
+                if (! $plan = $planner->recipient($r, $current, $c, $business)) continue;
+                $pending[] = ['at' => $planner->runAt($business, $plan), 'kind' => 'pending', 'label' => 'Signing reminder scheduled',
+                    'who' => $r->name.' <'.$r->email.'>', 'detail' => 'Automatic · every '.$plan['every'].' days until signed'];
+            }
+        }
+        usort($pending, fn ($x, $y) => $x['at'] <=> $y['at']);
+
+        return array_merge($pending, $items);
     }
 
     public function edit(int $id)

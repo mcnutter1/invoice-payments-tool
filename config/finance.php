@@ -77,6 +77,16 @@ return [
         'cache_days' => 30,
     ],
 
+    'reminders' => [
+        // UTC time the daily finance:reminders job runs.
+        'run_at' => env('FINANCE_REMINDERS_AT', '14:00'),
+    ],
+
+    'tracking' => [
+        // Opens/clicks this soon after the mail service accepted the email are treated as security pre-checks.
+        'prefetch_seconds' => (int) env('FINANCE_PREFETCH_SECONDS', 30),
+    ],
+
     'trusted_proxies' => env('TRUSTED_PROXIES'),
 
     // Comma list of central principal IDs allowed to manage platform role mappings (no tenant access implied).

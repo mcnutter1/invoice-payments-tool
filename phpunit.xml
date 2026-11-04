@@ -33,6 +33,7 @@
         <env name="AUTH_APP_SECRET" value="test-secret-0123456789"/>
         <env name="FINANCE_PRIVATE_STORAGE" value="storage/framework/testing/private"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
+        <env name="FINANCE_PREFETCH_SECONDS" value="0"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>

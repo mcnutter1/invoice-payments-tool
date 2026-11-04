@@ -6,7 +6,6 @@ use App\Models\DocumentAccessEvent;
 use App\Models\EmailOutbox;
 use App\Models\PublicToken;
 use App\Services\PublicAccess\ClientActivity;
-use App\Services\PublicAccess\PublicLinkService;
 use Illuminate\Http\Request;
 
 /** Email open (pixel) and link-click tracking, recorded as client activity. */
@@ -56,6 +55,15 @@ class EmailTracker
 
     public static function label(DocumentAccessEvent $e): string
     {
+        if ($e->probable_automation) {
+            return match ($e->event) {
+                'email_opened' => 'Email pre-scanned by mail security (not an open)',
+                'email_clicked' => 'Link pre-checked by mail security (not a click)',
+                'link_accessed' => 'Secure link pre-checked (not a visit)',
+                'invoice_viewed', 'contract_viewed' => 'Page fetched by a scanner (not a view)',
+                default => (self::LABELS[$e->event] ?? ucfirst(str_replace('_', ' ', $e->event))).' — automated pre-check',
+            };
+        }
         if ($e->event === 'email_clicked' && isset(self::CLICK_ACTIONS[$e->detail])) {
             return 'Clicked “'.self::CLICK_ACTIONS[$e->detail].'” in the email';
         }
@@ -80,15 +88,17 @@ class EmailTracker
     {
         $o = $this->find($raw);
         if (! $o) return;
+        $attrs = $this->attrs($o, 'email_opened');
+        [$automated, $reason] = app(ClientActivity::class)->classify($request, $attrs);
         // Image re-fetches within 10 minutes count toward the total but are not separate activity entries.
-        if (! $o->last_opened_at || $o->last_opened_at->lt(now()->subMinutes(10))) {
-            $this->event($o, 'email_opened', $request);
+        $last = $automated ? $o->scanned_at : $o->last_opened_at;
+        if (! $last || $last->lt(now()->subMinutes(10))) {
+            app(ClientActivity::class)->record($request, $attrs + ['probable_automation' => $automated, 'automation_reason' => $reason], $o->to_email);
         }
-        $o->forceFill([
-            'opened_at' => $o->opened_at ?? now(),
-            'last_opened_at' => now(),
-            'open_count' => $o->open_count + 1,
-        ])->save();
+        // Pre-scans are kept apart so they never count as an open.
+        $o->forceFill($automated
+            ? ['scanned_at' => now(), 'scan_count' => $o->scan_count + 1]
+            : ['opened_at' => $o->opened_at ?? now(), 'last_opened_at' => now(), 'open_count' => $o->open_count + 1])->save();
     }
 
     /** Records a click only when the tracking token belongs to the same business and document as the link. */
@@ -100,20 +110,15 @@ class EmailTracker
             || ($t->contract_recipient_id && $o->contract_recipient_id === $t->contract_recipient_id);
         if (! $sameDoc) return;
         $action = is_string($action) && isset(self::CLICK_ACTIONS[$action]) ? $action : 'view';
-        $this->event($o, 'email_clicked', $request, $action, $t->id);
-        $o->forceFill([
-            'opened_at' => $o->opened_at ?? now(),
-            'clicked_at' => $o->clicked_at ?? now(),
-            'click_count' => $o->click_count + 1,
-        ])->save();
+        $e = app(ClientActivity::class)->record($request, $this->attrs($o, 'email_clicked', $action, $t->id), $o->to_email);
+        $o->forceFill($e->probable_automation
+            ? ['scanned_at' => now(), 'scan_count' => $o->scan_count + 1]
+            : ['opened_at' => $o->opened_at ?? now(), 'clicked_at' => $o->clicked_at ?? now(), 'click_count' => $o->click_count + 1])->save();
     }
 
-    private function event(EmailOutbox $o, string $event, Request $request, ?string $detail = null, ?int $tokenId = null): void
+    private function attrs(EmailOutbox $o, string $event, ?string $detail = null, ?int $tokenId = null): array
     {
-        $ua = (string) $request->userAgent();
-        // Gmail fetches images through its proxy only when the recipient opens the message.
-        $automated = PublicLinkService::looksAutomated($ua) && ! ($event === 'email_opened' && stripos($ua, 'googleimageproxy') !== false);
-        app(ClientActivity::class)->record($request, [
+        return [
             'business_id' => $o->business_id,
             'public_token_id' => $tokenId,
             'invoice_id' => $o->invoice_id,
@@ -121,7 +126,6 @@ class EmailTracker
             'email_outbox_id' => $o->id,
             'event' => $event,
             'detail' => $detail,
-            'probable_automation' => $automated,
-        ], $o->to_email);
+        ];
     }
 }

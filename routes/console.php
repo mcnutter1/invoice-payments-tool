@@ -6,4 +6,4 @@ use Illuminate\Support\Facades\Schedule;
 Schedule::command('finance:outbox')->everyMinute()->withoutOverlapping(10);
 Schedule::command('finance:recurring')->everyMinute()->withoutOverlapping(10);
 Schedule::command('finance:maintenance')->hourly()->withoutOverlapping(30);
-Schedule::command('finance:reminders')->dailyAt('14:00')->withoutOverlapping(30);
+Schedule::command('finance:reminders')->dailyAt(config('finance.reminders.run_at', '14:00'))->withoutOverlapping(30);

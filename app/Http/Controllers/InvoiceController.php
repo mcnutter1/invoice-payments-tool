@@ -215,10 +215,27 @@ class InvoiceController extends Controller
             'outbox' => $outbox,
             'links' => PublicToken::where('invoice_id', $invoice->id)->latest('id')->get(),
             'access' => $access,
-            'timeline' => $this->timeline($audit, $outbox, $access),
+            'timeline' => array_merge($this->pendingReminder($invoice), $this->timeline($audit, $outbox, $access)),
             'purgeBlocker' => $this->service->purgeBlocker($invoice),
             'incomeAccounts' => ChartAccount::where('business_id', $invoice->business_id)->where('type', 'income')->orderBy('code')->get(),
         ]);
+    }
+
+    /** The next automatic reminder, shown at the top of the activity log. */
+    private function pendingReminder(Invoice $invoice): array
+    {
+        $b = $this->biz();
+        $planner = app(\App\Services\Notifications\ReminderPlanner::class);
+        $plan = $planner->invoice($invoice, $b);
+        if (! $plan) return [];
+        $paused = $plan['paused_until']?->isFuture();
+
+        return [[
+            'at' => $planner->runAt($b, $plan), 'kind' => 'pending',
+            'label' => $plan['type'] === 'invoice_overdue' ? 'Past-due reminder scheduled' : 'Reminder scheduled (invoice not yet viewed)',
+            'who' => implode(', ', $invoice->deliveryRecipients()) ?: 'No recipient email',
+            'detail' => 'Automatic · every '.$plan['every'].' days'.($paused ? ' · paused until '.$plan['paused_until']->timezone($b->timezone)->format('M j').' while a payment report is reviewed' : ''),
+        ]];
     }
 
     /** Staff actions, email delivery and client activity merged newest-first. */
@@ -241,7 +258,7 @@ class InvoiceController extends Controller
             $items[] = ['at' => $e->created_at, 'kind' => 'client', 'label' => \App\Services\Notifications\EmailTracker::label($e),
                 'who' => $e->email_outbox_id ? ($emails[$e->email_outbox_id]->to_email ?? 'Client') : 'Client', 'automated' => $e->probable_automation,
                 'detail' => implode(' · ', array_filter([$e->ip ? 'IP '.$e->ip : null, $e->location, $e->network,
-                    \App\Services\PublicAccess\ClientActivity::source($e->user_agent, $e->probable_automation)]))];
+                    \App\Services\PublicAccess\ClientActivity::source($e->user_agent, $e->probable_automation, $e->automation_reason)]))];
         }
         usort($items, fn ($x, $y) => $y['at'] <=> $x['at']);
 
