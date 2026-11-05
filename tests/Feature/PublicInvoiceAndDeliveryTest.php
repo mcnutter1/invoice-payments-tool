@@ -165,14 +165,14 @@ class PublicInvoiceAndDeliveryTest extends TestCase
         app(OutboxProcessor::class)->run(10, microtime(true) + 10);
         $body = end(LogNotificationGateway::$sent)->body;
         preg_match('#/t/o/([A-Za-z0-9_-]{43})\.gif#', $body, $px);
-        preg_match('#/i/([A-Za-z0-9_-]{43})\?e=([A-Za-z0-9_-]{43})&amp;a=pay#', $body, $pay);
+        preg_match('#/i/([A-Za-z0-9_-]{43})\?e=([A-Za-z0-9_-]{43})&amp;a=view#', $body, $pay);
         $this->assertNotEmpty($px);
         $this->assertNotEmpty($pay);
         $this->flushSession();
 
         $this->withHeader('User-Agent', 'Mozilla/5.0 (Macintosh)')->get('/t/o/'.$px[1].'.gif')->assertOk()->assertHeader('Content-Type', 'image/gif');
         $this->get('/t/o/'.str_repeat('x', 43).'.gif')->assertOk(); // unknown token: same response, nothing recorded
-        $this->get('/i/'.$pay[1].'?e='.$pay[2].'&a=pay')->assertRedirect('/i/v/'.$inv->ulid.'#howtopay');
+        $this->get('/i/'.$pay[1].'?e='.$pay[2].'&a=view')->assertRedirect('/i/v/'.$inv->ulid);
         $this->get('/i/v/'.$inv->ulid)->assertOk()->assertSee('Pay now');
         $this->get('/i/v/'.$inv->ulid.'/pay')->assertRedirect('/i/v/'.$inv->ulid.'#howtopay');
         $this->postJson('/i/v/'.$inv->ulid.'/event', ['event' => 'payment_details_copied', 'detail' => 'memo'])->assertNoContent();
@@ -190,8 +190,24 @@ class PublicInvoiceAndDeliveryTest extends TestCase
 
         $this->flushSession();
         $this->signIn($owner)->get("/b/{$biz->ulid}/invoices/{$inv->id}")->assertOk()
-            ->assertSee('Opened the email')->assertSee('Clicked “Pay now” in the email')->assertSee('Copied payment details (memo)');
+            ->assertSee('Opened the email')->assertSee('Clicked “View invoice” in the email')->assertSee('Copied payment details (memo)');
         $this->signIn($owner)->get("/b/{$biz->ulid}/invoices")->assertOk()->assertSee('Clicked pay');
+    }
+
+    public function test_invoice_email_avoids_common_phishing_signals(): void
+    {
+        [$owner, $biz, , $inv] = $this->issued();
+        $biz->update(['zelle_email' => 'pay@biz.test', 'address_line1' => '1 Main St', 'city' => 'Austin', 'state' => 'TX']);
+        $this->signIn($owner)->post("/b/{$biz->ulid}/invoices/{$inv->id}/send", ['recipients' => 'client@example.test']);
+        app(OutboxProcessor::class)->run(10, microtime(true) + 10);
+        $m = end(LogNotificationGateway::$sent);
+        $this->assertStringContainsString(' via McNutt Finance <', $m->from);
+        $this->assertDoesNotMatchRegularExpression('/&#(8199|65279|847);|display:none|opacity:0/', $m->body);
+        foreach (['secure link', 'Pay invoice', 'pay@biz.test', 'expires'] as $phrase) {
+            $this->assertStringNotContainsStringIgnoringCase($phrase, $m->body);
+        }
+        $this->assertStringContainsString('1 Main St', $m->body);
+        $this->assertStringContainsString('You received this email because', $m->body);
     }
 
     public function test_cancelled_invoices_are_hidden_by_default_and_purge_removes_everything(): void

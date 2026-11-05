@@ -56,7 +56,17 @@ Constraints: ≤ 5 attachments, ≤ 5 MB decoded each, filename `[A-Za-z0-9._-]{
 
 ### Sender identity
 
-`from` = sanitized business sender name + `NOTIFICATIONS_FROM_EMAIL`, unless the business's sender email is listed in `NOTIFICATIONS_APPROVED_SENDERS`. CR/LF and header metacharacters are stripped from names, subjects and addresses.
+`from` = sanitized business sender name + `NOTIFICATIONS_FROM_EMAIL`, unless the business's sender email is listed in `NOTIFICATIONS_APPROVED_SENDERS`. When the shared platform address is used the display name reads “Business via McNutt Finance” so it is not mistaken for display-name spoofing. CR/LF, `@` and header metacharacters are stripped from names, subjects and addresses.
+
+### Deliverability (Microsoft 365 / Gmail phishing filters)
+
+Template rules: no hidden preheader or zero-width characters, no payment instructions (Zelle handles, mailing addresses) in the email body — those stay on the invoice page/PDF — no “secure/personal/expires/verify” phrasing, a single clear primary action, and a footer with the business name, postal address and contact details.
+
+Outside the app (required for M365 to trust the mail):
+* SPF and DKIM for the sending domain must pass **and align** with the `From` domain; publish DMARC (`p=quarantine` or `reject` once clean).
+* Configure the provider's link-branding / click-tracking domain on the same organizational domain as `From`, and keep `APP_URL` on a domain with good reputation (links point there).
+* Prefer a dedicated subdomain (e.g. `mail.example.com`) per sender; warm up volume gradually.
+* Recipients' M365 admins can add the sending domain to Tenant Allow/Block or a transport rule if their tenant still quarantines.
 
 ### Sanitized example payload (invoice)
 

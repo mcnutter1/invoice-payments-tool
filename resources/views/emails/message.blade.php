@@ -12,9 +12,6 @@
 <title>{{ $subject ?? '' }}</title>
 </head>
 <body style="margin:0;padding:0;background:#f1f5f9;-webkit-text-size-adjust:100%;">
-@if (! empty($preheader))
-<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">{{ $preheader }}&#8199;&#65279;&#847;&#8199;&#65279;&#847;&#8199;&#65279;&#847;</div>
-@endif
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f1f5f9;">
 <tr><td align="center" style="padding:28px 12px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;">
@@ -112,13 +109,14 @@
         </table>
     </td></tr>
 
-    <tr><td align="center" style="padding:16px 12px 0 12px;font-family:{!! $font !!};font-size:12px;line-height:1.6;color:#94a3b8;">
-        {{ $brand['name'] }}@if (! empty($brand['contact'])) · {{ $brand['contact'] }}@endif<br>
-        {{ $footer ?? 'Sent securely via McNutt Finance. Links in this email are personal to you — please don’t forward them.' }}
+    <tr><td align="center" style="padding:16px 12px 0 12px;font-family:{!! $font !!};font-size:12px;line-height:1.6;color:#64748b;">
+        <strong>{{ $brand['name'] }}</strong>@if (! empty($brand['address'])) · {{ $brand['address'] }}@endif
+        @if (! empty($brand['contact']))<br>{{ $brand['contact'] }}@endif<br>
+        {{ $footer ?? 'You received this email because '.$brand['name'].' sent you a document using McNutt Finance.' }}
     </td></tr>
 </table>
 </td></tr>
 </table>
-@if (! empty($pixel))<img src="{{ $pixel }}" width="1" height="1" alt="" style="display:block;width:1px;height:1px;border:0;opacity:0;">@endif
+@if (! empty($pixel))<img src="{{ $pixel }}" width="1" height="1" alt="" style="display:block;width:1px;height:1px;border:0;">@endif
 </body>
 </html>

@@ -23,13 +23,13 @@ class EmailComposer
 
     public static function fromHeader(Business $b): string
     {
-        $name = trim(preg_replace('/[\r\n<>"\\\\,;]+/', ' ', $b->sender_name ?: $b->name()));
+        $name = trim(preg_replace('/[\r\n<>"\\\\,;@]+/', ' ', $b->sender_name ?: $b->name()));
         $approved = config('finance.notifications.approved_senders', []);
-        $email = $b->sender_email && in_array(strtolower($b->sender_email), array_map('strtolower', $approved), true)
-            ? $b->sender_email
-            : (string) config('finance.notifications.default_from_email');
+        $own = $b->sender_email && in_array(strtolower($b->sender_email), array_map('strtolower', $approved), true);
+        // A business name on a shared platform address looks like display-name spoofing; "via" makes the relationship explicit.
+        if (! $own) $name .= ' via McNutt Finance';
 
-        return $name.' <'.$email.'>';
+        return $name.' <'.($own ? $b->sender_email : (string) config('finance.notifications.default_from_email')).'>';
     }
 
     public static function safeHeader(string $s): string
@@ -44,7 +44,15 @@ class EmailComposer
             'accent' => $b->brand('accent'),
             'logo' => $b->logo_document_id ? url('/brand/'.$b->ulid.'/logo') : null,
             'contact' => implode(' · ', array_filter([$b->public_email, $b->phone])),
+            'address' => implode(', ', $b->addressLines()),
         ];
+    }
+
+    public static function contactSuffix(Business $b): string
+    {
+        $c = array_filter([$b->public_email, $b->phone]);
+
+        return $c ? ' at '.implode(' or ', $c) : '';
     }
 
     /**
@@ -95,29 +103,13 @@ class EmailComposer
         if (! $recipients) throw new DomainException('Add at least one recipient email.');
 
         $snap = $invoice->client_snapshot ?? [];
-        $instr = $invoice->instructions_snapshot ?? [];
         $payable = $invoice->balance_cents > 0;
         $overdue = $invoice->isOverdue();
-        $sections = [];
-        if ($payable && ! empty($instr['zelle'])) {
-            $z = $instr['zelle'];
-            $sections[] = ['title' => 'Pay with Zelle', 'lines' => array_filter([
-                'Send to '.($z['recipient_name'] ?? '').' using your bank’s app.',
-                trim(implode(' · ', array_filter([$z['email'] ?? null, $z['phone'] ?? null]))) ?: null,
-                'Memo: Invoice '.$invoice->number,
-            ])];
-        }
-        if ($payable && ! empty($instr['check'])) {
-            $c = $instr['check'];
-            $sections[] = ['title' => 'Pay by check', 'lines' => [
-                'Payable to '.($c['payee'] ?? ''),
-                'Mail to '.str_replace("\n", ', ', (string) ($c['address'] ?? '')),
-                'Memo: Invoice '.$invoice->number,
-            ]];
-        }
+        // Payment details (Zelle handles, mailing addresses) stay on the invoice page and PDF: money-transfer
+        // instructions inside an email are the main signal filters use for invoice fraud.
         $intro = $message ?: match (true) {
-            $kind === 'reminder' && $overdue => 'Our records show the invoice below is past due. If you’ve already paid or mailed a check, please let us know with the “I’ve paid / mailed a check” button so we can mark it.',
-            $kind === 'reminder' => 'This is a friendly reminder that the invoice below has an open balance.',
+            $kind === 'reminder' && $overdue => 'Our records show invoice '.$invoice->number.' still has an open balance. If you’ve already paid or mailed a check, thank you — you can let us know from the invoice page so we can update our records.',
+            $kind === 'reminder' => 'A friendly reminder that invoice '.$invoice->number.' has an open balance.',
             default => $business->brand('email_intro') ?: 'Thank you for your business. Your invoice is ready.',
         };
 
@@ -130,23 +122,19 @@ class EmailComposer
                 'recipient_email' => $to,
             ], $business->invoice_link_ttl_days);
             $url = url('/i/'.$raw);
-            $buttons = $payable
-                ? [['label' => 'Pay invoice', 'url' => $url, 'track' => 'pay'], ['label' => 'View invoice', 'url' => $url, 'track' => 'view', 'style' => 'secondary'], ['label' => 'Download PDF', 'url' => $url.'?d=pdf', 'track' => 'pdf', 'style' => 'secondary']]
-                : [['label' => 'View invoice', 'url' => $url, 'track' => 'view'], ['label' => 'Download PDF', 'url' => $url.'?d=pdf', 'track' => 'pdf', 'style' => 'secondary']];
+            $buttons = [['label' => 'View invoice', 'url' => $url, 'track' => 'view'], ['label' => 'Download PDF', 'url' => $url.'?d=pdf', 'track' => 'pdf']];
             if ($payable && $kind === 'reminder') {
-                array_splice($buttons, 1, 0, [['label' => 'I’ve paid / mailed a check', 'url' => $url, 'track' => 'report', 'style' => 'secondary']]);
+                $buttons[] = ['label' => 'I’ve paid / mailed a check', 'url' => $url, 'track' => 'report'];
             }
-            $subject = ($kind === 'reminder' ? ($overdue ? 'Past due: ' : 'Reminder: ') : '').'Invoice '.$invoice->number.' from '.$business->name();
+            $subject = 'Invoice '.$invoice->number.' from '.$business->name().($kind === 'reminder' ? ' (reminder)' : '');
             $this->queue($business, $kind, $to, $subject, [
-                'tag' => $kind === 'reminder' ? 'Payment reminder' : 'Invoice',
-                'preheader' => 'Invoice '.$invoice->number.' · '.Money::format($invoice->balance_cents).($invoice->due_date ? ' due '.$invoice->due_date->format('M j, Y') : ''),
+                'tag' => $kind === 'reminder' ? 'Reminder' : 'Invoice',
                 'greeting' => 'Hello '.($snap['display_name'] ?? 'there').',',
-                'paragraphs' => [$intro],
+                'paragraphs' => array_values(array_filter([$intro, $payable ? 'Payment options are listed on the invoice.' : null])),
                 'highlight' => [
                     'label' => $payable ? ($invoice->paid_cents > 0 ? 'Remaining balance' : 'Amount due') : 'Balance',
                     'value' => Money::format(max(0, $invoice->balance_cents)),
-                    'sub' => $payable && $invoice->due_date ? 'Due '.$invoice->due_date->format('F j, Y').($overdue ? ' · past due' : '') : ($payable ? null : 'Paid in full — thank you!'),
-                    'tone' => $overdue ? 'alert' : null,
+                    'sub' => $payable && $invoice->due_date ? 'Due '.$invoice->due_date->format('F j, Y') : ($payable ? null : 'Paid in full — thank you!'),
                 ],
                 'details' => array_values(array_filter([
                     ['Invoice', $invoice->number],
@@ -155,8 +143,7 @@ class EmailComposer
                     ['Invoice total', Money::format($invoice->total_cents)],
                 ], fn ($r) => $r && $r[1])),
                 'buttons' => $buttons,
-                'sections' => $sections,
-                'notes' => ['This secure link is personal to you and expires on '.$token->expires_at->format('F j, Y').'.'],
+                'notes' => ['This link was created for '.$to.' and is available until '.$token->expires_at->format('F j, Y').'. Questions about this invoice? Contact '.$business->name().self::contactSuffix($business).'.'],
                 'signoff' => 'Thank you,',
             ], [
                 'invoice_id' => $invoice->id,
@@ -210,7 +197,6 @@ class EmailComposer
             }
             $this->queue($business, 'receipt', $email, 'Thank you for your payment — '.$business->name(), [
                 'tag' => 'Payment received',
-                'preheader' => 'We received your payment of '.Money::format($payment->amount_cents).'. Thank you!',
                 'greeting' => 'Hello '.$payment->client->display_name.',',
                 'paragraphs' => array_values(array_filter([
                     'Thank you for your payment. We’ve received it and marked it as received on our records.',
@@ -234,17 +220,15 @@ class EmailComposer
         $v = $r->version()->with('contract')->first();
         $business = Business::find($r->business_id);
         $this->queue($business, $reminder ? 'contract_reminder' : 'contract_invitation', $r->email,
-            ($reminder ? 'Reminder: ' : '').'Please sign: '.$v->title, [
-                'tag' => 'Signature requested',
-                'preheader' => $business->name().' sent you “'.$v->title.'” to review and sign.',
+            $reminder ? 'Reminder from '.$business->name().': “'.$v->title.'” is ready to sign' : $business->name().' sent you “'.$v->title.'” to sign', [
+                'tag' => 'Agreement',
                 'heading' => $v->title,
                 'greeting' => 'Hello '.$r->name.',',
-                'paragraphs' => [$business->name().' has sent you this agreement to review and sign electronically.'],
-                'buttons' => [['label' => 'Review & sign', 'url' => $url, 'track' => 'sign']],
+                'paragraphs' => [$business->name().' has shared this agreement with you to review and sign online. You can read the full document before deciding.'],
+                'buttons' => [['label' => 'Review agreement', 'url' => $url, 'track' => 'sign']],
                 'notes' => array_filter([
-                    'You’ll be asked to confirm a one-time code sent to this email address before signing.',
-                    'Prefer to sign on paper? Reply to '.$business->name().' and they can arrange an alternative.',
-                    $v->expires_at ? 'This link expires on '.$v->expires_at->format('F j, Y').'.' : null,
+                    'Prefer to sign on paper or have questions? Contact '.$business->name().self::contactSuffix($business).'.',
+                    $v->expires_at ? 'This link was created for '.$r->email.' and is available until '.$v->expires_at->format('F j, Y').'.' : null,
                 ]),
             ], ['contract_version_id' => $v->id, 'contract_recipient_id' => $r->id]);
     }
@@ -259,9 +243,8 @@ class EmailComposer
             ($p->typed_name ?: $p->name).($p->role === 'countersigner' ? ' ('.$business->name().')' : ''),
             $p->signed_at ? 'Signed '.$p->signed_at->timezone($tz)->format('M j, Y g:ia T') : 'Signed',
         ])->values()->all();
-        $this->queue($business, 'contract_completed', $r->email, 'Fully executed: '.$v->title, [
-            'tag' => 'Fully executed',
-            'preheader' => 'All parties have signed “'.$v->title.'”. Your executed copy is ready.',
+        $this->queue($business, 'contract_completed', $r->email, 'Signed copy: '.$v->title, [
+            'tag' => 'Agreement',
             'heading' => $v->title,
             'greeting' => 'Hello '.$r->name.',',
             'paragraphs' => [
@@ -276,7 +259,7 @@ class EmailComposer
                 $v->signed_document_id ? ['label' => 'Download signed PDF', 'url' => $url.'?d=signed', 'track' => 'signed_pdf'] : null,
                 $v->certificate_document_id ? ['label' => 'Signature certificate', 'url' => $url.'?d=certificate', 'track' => 'certificate'] : null,
             ])),
-            'notes' => ['These secure links are personal to you and expire in 90 days. Please download a copy for your records.'],
+            'notes' => ['These links were created for '.$r->email.' and are available for 90 days. Please download a copy for your records.'],
             'signoff' => 'Thank you,',
         ], ['contract_version_id' => $v->id, 'contract_recipient_id' => $r->id]);
     }
@@ -284,12 +267,12 @@ class EmailComposer
     public function queueSigningCode(ContractRecipient $r, string $code): void
     {
         $business = Business::find($r->business_id);
-        $this->queue($business, 'signing_code', $r->email, 'Your signing verification code', [
-            'tag' => 'Verification code',
-            'preheader' => 'Your code is '.$code,
-            'paragraphs' => ['Use this code to verify your email and continue signing with '.$business->name().'.'],
+        $title = $r->version()->value('title');
+        $this->queue($business, 'signing_code', $r->email, 'Your code for signing “'.$title.'”', [
+            'tag' => 'Signing code',
+            'paragraphs' => ['You asked for a code to sign “'.$title.'” with '.$business->name().'. Enter it on the signing page to continue.'],
             'code' => $code,
-            'notes' => ['It expires in '.config('finance.signing.otp_ttl_minutes').' minutes. If you didn’t request this code, you can ignore this email.'],
+            'notes' => ['The code works for '.config('finance.signing.otp_ttl_minutes').' minutes. If you didn’t start signing this agreement, you can ignore this email — nothing else is needed.'],
         ], ['contract_recipient_id' => $r->id]);
     }
 
@@ -319,7 +302,7 @@ class EmailComposer
             'greeting' => 'Hello,',
             'paragraphs' => [$inv->inviter->label().' invited you to join '.$business->name().' in McNutt Finance as '.$inv->role->name.'.'],
             'buttons' => [['label' => 'Accept invitation', 'url' => $url]],
-            'notes' => ['You’ll sign in with your McNutt Cloud account. This invitation expires on '.$inv->expires_at->format('F j, Y').'.'],
+            'notes' => ['You’ll sign in with your McNutt Cloud account. This invitation is available until '.$inv->expires_at->format('F j, Y').'.'],
         ]);
     }
 

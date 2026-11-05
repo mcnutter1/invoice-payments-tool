@@ -73,7 +73,7 @@ class SignatureTest extends TestCase
         $viewToken = $this->lastBodyMatching('#/c/([A-Za-z0-9_-]{40,64})#');
         $this->assertNotSame($token, $viewToken);
         $done = end(LogNotificationGateway::$sent);
-        $this->assertSame('Fully executed: Retainer', $done->subject);
+        $this->assertSame('Signed copy: Retainer', $done->subject);
         $this->assertStringContainsString('Download signed PDF', $done->body);
         $this->assertStringContainsString('Signature certificate', $done->body);
         $this->get('/c/'.$viewToken.'?d=signed')->assertRedirect('/c/r/'.$r->id.'/signed');
