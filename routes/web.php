@@ -54,6 +54,12 @@ Route::middleware('central')->group(function () {
     Route::get('/invite/{token}', [C\InvitationController::class, 'show'])->where('token', '[A-Za-z0-9_-]{40,64}');
     Route::post('/invite/{token}', [C\InvitationController::class, 'accept'])->where('token', '[A-Za-z0-9_-]{40,64}');
     Route::get('/platform', [C\PlatformController::class, 'index']);
+    Route::get('/platform/backups', [C\PlatformBackupController::class, 'index']);
+    Route::post('/platform/backups/settings', [C\PlatformBackupController::class, 'saveSettings'])->middleware('central:fresh');
+    Route::post('/platform/backups/test', [C\PlatformBackupController::class, 'test'])->middleware('throttle:sensitive');
+    Route::post('/platform/backups/notify-test', [C\PlatformBackupController::class, 'testNotification'])->middleware('throttle:sensitive');
+    Route::post('/platform/backups/businesses', [C\PlatformBackupController::class, 'saveBusinesses'])->middleware('central:fresh');
+    Route::post('/platform/backups/businesses/{ulid}/run', [C\PlatformBackupController::class, 'run'])->middleware('throttle:sensitive');
     Route::post('/platform/role-mappings', [C\PlatformController::class, 'storeMapping'])->middleware('central:fresh');
     Route::post('/platform/role-mappings/{id}/delete', [C\PlatformController::class, 'deleteMapping'])->middleware('central:fresh');
 
@@ -292,6 +298,19 @@ Route::middleware('central')->group(function () {
         Route::post('/settings/ownership', [C\MemberController::class, 'transferOwnership'])->middleware(['perm:ownership.transfer', 'central:fresh']);
         Route::get('/automation', [C\OperationsController::class, 'automation'])->middleware('perm:automation.view');
         Route::get('/audit', [C\OperationsController::class, 'audit'])->middleware('perm:audit.view');
+
+        // Backups (explorer, previews and restore)
+        Route::middleware('perm:business.manage')->group(function () {
+            Route::get('/backups', [C\BackupController::class, 'index']);
+            Route::post('/backups/run', [C\BackupController::class, 'run'])->middleware('throttle:sensitive');
+            Route::get('/backups/records/{table}/{key}', [C\BackupController::class, 'record'])->where(['table' => '[a-z_]+', 'key' => '[A-Za-z0-9:_-]+']);
+            Route::get('/backups/files/{document}', [C\BackupController::class, 'file'])->whereNumber('document');
+            Route::get('/backups/{snapshot}', [C\BackupController::class, 'snapshotShow'])->where('snapshot', '[0-9a-z]{26}');
+            Route::get('/backups/{snapshot}/export', [C\BackupController::class, 'export'])->where('snapshot', '[0-9a-z]{26}')->middleware('central:fresh');
+            Route::post('/backups/{snapshot}/records/{table}/{key}/restore', [C\BackupController::class, 'restoreRecord'])
+                ->where(['snapshot' => '[0-9a-z]{26}', 'table' => '[a-z_]+', 'key' => '[A-Za-z0-9:_-]+']);
+            Route::post('/backups/{snapshot}/rollback', [C\BackupController::class, 'rollback'])->where('snapshot', '[0-9a-z]{26}')->middleware('central:fresh');
+        });
 
         // Migration (CSV import wizard)
         Route::middleware(['perm:journals.manage', 'perm:clients.manage'])->group(function () {

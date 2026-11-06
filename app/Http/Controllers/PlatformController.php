@@ -25,7 +25,7 @@ class PlatformController extends Controller
 
             return;
         }
-        abort_unless($isAdmin || app(\App\Services\Access\PermissionService::class)->hasCentralCapability($user, 'platform.operations'), 403);
+        abort_unless($isAdmin || $user->isPlatformAdmin() || app(\App\Services\Access\PermissionService::class)->hasCentralCapability($user, 'platform.operations'), 403);
     }
 
     public function index(AuthGateway $auth, NotificationGateway $notify)
@@ -37,6 +37,7 @@ class PlatformController extends Controller
             'capabilities' => Permissions::CENTRAL_CAPABILITIES,
             'auth' => $auth->health(),
             'notify' => $notify->health(),
+            'isAdmin' => $this->ctx()->user->isPlatformAdmin(),
         ]);
     }
 

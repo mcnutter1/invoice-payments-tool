@@ -20,7 +20,7 @@
 <div class="mt-4 grid gap-4 lg:grid-cols-2">
     <div class="card overflow-x-auto"><div class="card-head"><h2>Jobs</h2></div>
         <table class="tbl"><thead><tr><th>Job</th><th>Last success</th><th>Last failure</th></tr></thead><tbody>
-        @foreach (['outbox' => 'Email outbox', 'recurring' => 'Recurring billing', 'reminders' => 'Client reminders', 'maintenance' => 'Maintenance'] as $k => $label)
+        @foreach (['outbox' => 'Email outbox', 'recurring' => 'Recurring billing', 'reminders' => 'Client reminders', 'backups' => 'Backups', 'maintenance' => 'Maintenance'] as $k => $label)
             @php $h = $hb($k); @endphp
             <tr><td>{{ $label }}</td><td>{{ $age($h?->last_success_at) }}</td><td>{{ $h?->last_failure_at ? $age($h->last_failure_at) : '—' }} @if($h?->last_error)<div class="text-xs text-red-700">{{ \Illuminate\Support\Str::limit($h->last_error, 160) }}</div>@endif</td></tr>
         @endforeach

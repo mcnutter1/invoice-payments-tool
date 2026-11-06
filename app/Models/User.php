@@ -23,4 +23,12 @@ class User extends Model
     {
         return $this->name ?: ($this->email ?: $this->central_principal_id);
     }
+
+    /** SSO "admin" role or a principal listed in FINANCE_PLATFORM_ADMINS: may manage application-level settings. */
+    public function isPlatformAdmin(): bool
+    {
+        $admins = array_filter(array_map('trim', explode(',', (string) config('finance.platform_admins'))));
+
+        return in_array($this->central_principal_id, $admins, true) || in_array('admin', (array) $this->central_roles, true);
+    }
 }

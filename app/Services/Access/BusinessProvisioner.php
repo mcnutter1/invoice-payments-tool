@@ -65,6 +65,7 @@ class BusinessProvisioner
                 'display_name' => $attrs['legal_name'] ?? 'New business',
                 'payment_methods' => ['zelle', 'check'],
                 'sender_name' => $attrs['display_name'] ?? ($attrs['legal_name'] ?? null),
+                'backups_enabled' => (bool) app(\App\Services\Backups\BackupSettings::class)->all()['default_enabled'],
             ], $attrs));
             $business->refresh();
 

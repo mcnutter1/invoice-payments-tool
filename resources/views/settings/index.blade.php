@@ -10,6 +10,7 @@
         @if ($ctx->can('roles.manage'))<a class="btn btn-sm" href="{{ $bu }}/settings/roles">Roles</a>@endif
         @if ($ctx->can('automation.view'))<a class="btn btn-sm" href="{{ $bu }}/automation">Automation</a>@endif
         @if ($ctx->can('audit.view'))<a class="btn btn-sm" href="{{ $bu }}/audit">Audit log</a>@endif
+        @if ($ctx->can('business.manage'))<a class="btn btn-sm" href="{{ $bu }}/backups">Backups</a>@endif
         @if ($ctx->can('journals.manage') && $ctx->can('clients.manage'))<a class="btn btn-sm" href="{{ $bu }}/migration">Data import</a>@endif
         <a class="btn btn-sm" href="{{ $bu }}/vendors">Vendors</a>
     </nav>

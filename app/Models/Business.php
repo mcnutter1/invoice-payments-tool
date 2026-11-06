@@ -15,6 +15,7 @@ class Business extends Model
         'branding' => 'array',
         'reminder_settings' => 'array',
         'show_tax_id' => 'boolean',
+        'backups_enabled' => 'boolean',
         'books_closed_through' => 'date',
         'payment_instructions_changed_at' => 'datetime',
     ];
