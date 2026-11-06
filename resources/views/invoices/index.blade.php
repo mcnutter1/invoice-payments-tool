@@ -5,11 +5,8 @@
     <h1>Invoices</h1>
     @if ($ctx->can('invoices.manage'))<a href="{{ $bu }}/invoices/new" class="btn btn-primary">+ New invoice</a>@endif
 </div>
-<nav class="mt-4 flex flex-wrap gap-1" aria-label="Invoice filters">
-    @foreach (['all' => 'All', 'draft' => 'Drafts', 'unsent' => 'Not sent', 'open' => 'Open', 'overdue' => 'Overdue', 'paid' => 'Paid', 'void' => 'Cancelled'] as $k => $v)
-        <a href="?status={{ $k }}" class="btn btn-sm {{ $status === $k ? 'btn-primary' : '' }}" @if($status === $k) aria-current="true" @endif>{{ $v }}</a>
-    @endforeach
-</nav>
+@include('partials.tabs', ['label' => 'Invoice filters', 'class' => 'mt-4', 'tabs' => collect(['all' => 'All', 'draft' => 'Drafts', 'unsent' => 'Not sent', 'open' => 'Open', 'overdue' => 'Overdue', 'paid' => 'Paid', 'void' => 'Cancelled'])
+    ->map(fn ($v, $k) => [$v, '?status='.$k, $status === $k])->values()->all()])
 <form method="get" class="mt-3 flex flex-wrap items-end gap-2">
     <input type="hidden" name="status" value="{{ $status }}">
     <div><label for="q" class="label">Search</label><input id="q" name="q" class="input" placeholder="Number or client" value="{{ request('q') }}"></div>

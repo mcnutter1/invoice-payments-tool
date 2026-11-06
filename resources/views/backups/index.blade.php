@@ -5,9 +5,10 @@
     $tz = $biz->timezone;
     $badge = ['created' => 'chip-green', 'updated' => 'chip-blue', 'deleted' => 'chip-red'];
 @endphp
+@include('settings._tabs')
 <div class="flex flex-wrap items-center justify-between gap-3">
     <div>
-        <h1>Backups</h1>
+        <h2 class="text-lg">Backups</h2>
         <p class="text-sm text-slate-500">
             @if (! $configured) Backup storage hasn’t been set up by an administrator yet.
             @elseif (! $biz->backups_enabled) Backups are turned off for this business — ask an administrator to enable them.
@@ -35,7 +36,8 @@
         <thead><tr><th>Record</th><th>Kind</th><th class="text-right">Versions</th><th>Last changed</th><th></th></tr></thead>
         <tbody>
         @forelse ($records as $r)
-            <tr><td><a href="{{ $bu }}/backups/records/{{ $r->table_name }}/{{ $r->record_key }}" class="font-medium">{{ $r->label }}</a> @if($r->deleted)<span class="chip chip-red">deleted</span>@endif</td>
+            <tr><td><a href="{{ $bu }}/backups/records/{{ $r->table_name }}/{{ $r->record_key }}" class="font-medium">{{ $r->label }}</a> @if($r->deleted)<span class="chip chip-red">deleted</span>@endif
+                @if ($r->search_text && $r->search_text !== $r->label)<br><span class="text-xs text-slate-500">{{ \Illuminate\Support\Str::limit(\Illuminate\Support\Str::after($r->search_text, $r->label.' · '), 160) }}</span>@endif</td>
                 <td class="text-xs">{{ \App\Services\Backups\BackupCatalog::title($r->table_name) }}</td>
                 <td class="text-right">{{ $r->versions }}</td>
                 <td class="text-xs">{{ $r->last_changed_at?->timezone($tz)->format('M j, Y g:ia') }}</td>

@@ -129,4 +129,54 @@ class BackupCatalog
     {
         return self::ENTITIES[$t] ?? Str::headline($t);
     }
+
+    /** Bookkeeping columns that change on every save without the record's content changing. */
+    public const VOLATILE = ['updated_at', 'lock_version'];
+
+    /** Value equality that ignores representation: '2.0000' = 2, '' = null, JSON key order/spacing. */
+    public static function same(mixed $a, mixed $b): bool
+    {
+        $a = self::normalize($a);
+        $b = self::normalize($b);
+        if (is_numeric($a) && is_numeric($b)) return (float) $a === (float) $b;
+
+        return $a === $b;
+    }
+
+    private static function normalize(mixed $v): mixed
+    {
+        if ($v === null || $v === '') return null;
+        if (is_bool($v)) return $v ? '1' : '0';
+        if (is_string($v) && ($v[0] === '{' || $v[0] === '[')) {
+            $d = json_decode($v, true);
+            if (json_last_error() === JSON_ERROR_NONE) return self::canonical($d);
+        }
+        if (is_array($v)) return self::canonical($v);
+
+        return is_numeric($v) ? $v : (string) $v;
+    }
+
+    private static function canonical(mixed $v): string
+    {
+        $sort = function ($x) use (&$sort) {
+            if (! is_array($x)) return $x;
+            if (! array_is_list($x)) ksort($x);
+
+            return array_map($sort, $x);
+        };
+
+        return json_encode($sort($v));
+    }
+
+    public static function contentHash(array $row): string
+    {
+        $row = array_diff_key($row, array_flip(self::VOLATILE));
+        ksort($row);
+
+        return sha1(json_encode(array_map(function ($v) {
+            $n = self::normalize($v);
+
+            return is_numeric($n) ? (string) (0 + $n) : $n;
+        }, $row)));
+    }
 }

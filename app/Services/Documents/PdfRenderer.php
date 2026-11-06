@@ -15,14 +15,15 @@ class PdfRenderer
         'normal' => ['400', 'normal'], 'italic' => ['400', 'italic'], '500' => ['500', 'normal'], '600' => ['600', 'normal'], 'bold' => ['700', 'normal'],
     ];
 
-    public function render(string $view, array $data): string
+    public function render(string $view, array $data, bool $lockEditing = false): string
     {
         $html = view($view, $data)->render();
 
-        return $this->renderHtml($html);
+        return $this->renderHtml($html, $lockEditing);
     }
 
-    public function renderHtml(string $html): string
+    /** $lockEditing: encrypt with a random owner password so the PDF opens and prints but can't be edited. */
+    public function renderHtml(string $html, bool $lockEditing = false): string
     {
         $fontDir = storage_path('fonts');
         if (! is_dir($fontDir)) {
@@ -55,6 +56,10 @@ class PdfRenderer
         $pdf->setPaper('letter');
         $pdf->loadHtml($html, 'UTF-8');
         $pdf->render();
+        $canvas = $pdf->getCanvas();
+        if ($lockEditing && $canvas instanceof \Dompdf\Adapter\CPDF) {
+            $canvas->get_cpdf()->setEncryption('', bin2hex(random_bytes(16)), ['print']);
+        }
 
         return (string) $pdf->output();
     }

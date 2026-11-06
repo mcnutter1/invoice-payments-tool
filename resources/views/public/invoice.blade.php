@@ -97,4 +97,19 @@
 @if ($claims->whereIn('status', ['confirmed'])->isNotEmpty())
     <p class="mt-4 text-sm text-slate-600">Confirmed payments are reflected in the balance above.</p>
 @endif
+@if (! empty($w9Available) && ! $preview)
+<section id="w9" class="card card-body mt-8 flex scroll-mt-4 flex-wrap items-center justify-between gap-3">
+    <div>
+        <h2 class="text-base">Need {{ $business['name'] }}’s W-9?</h2>
+        <p class="text-sm text-slate-600">Get their completed IRS Form W-9 as a PDF for your records. We’ll also email you a copy.</p>
+    </div>
+    <div class="flex flex-wrap gap-2">
+        @if (session('w9_ready'))
+            <form method="post" action="/i/v/{{ $invoice->ulid }}/w9/download">@csrf<button class="btn btn-primary">Download W-9 (PDF)</button></form>
+        @else
+            <form method="post" action="/i/v/{{ $invoice->ulid }}/w9">@csrf<button class="btn">Request W-9</button></form>
+        @endif
+    </div>
+</section>
+@endif
 @endsection

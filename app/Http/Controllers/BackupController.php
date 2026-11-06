@@ -41,9 +41,21 @@ class BackupController extends Controller
         $type = $request->query('type');
         $records = null;
         if ($q !== '' || $type) {
+            if ($q !== '') app(\App\Services\Backups\BackupSearchIndex::class)->backfill($b->id);
+            $words = array_slice(array_filter(preg_split('/\s+/', $q) ?: []), 0, 8);
             $records = BackupRecord::where('business_id', $b->id)
                 ->when($type && isset(BackupCatalog::ENTITIES[$type]), fn ($x) => $x->where('table_name', $type))
-                ->when($q !== '', fn ($x) => $x->where(fn ($x) => $x->where('label', 'like', '%'.str_replace(['%', '_'], ['\%', '\_'], $q).'%')->orWhere('record_key', $q)))
+                ->when($q !== '', function ($x) use ($q, $words) {
+                    $x->where(function ($x) use ($q, $words) {
+                        $x->where('record_key', $q)->orWhere(function ($x) use ($words) {
+                            // Every word must appear in the record's name or anything it relates to (client, contract, signer…).
+                            foreach ($words as $w) {
+                                $like = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $w).'%';
+                                $x->where(fn ($x) => $x->whereRaw("label like ? escape '!'", [$like])->orWhereRaw("search_text like ? escape '!'", [$like]));
+                            }
+                        });
+                    });
+                })
                 ->orderByDesc('last_changed_at')->limit(100)->get();
         }
 
@@ -90,10 +102,29 @@ class BackupController extends Controller
             }
         }
         $current = $this->catalog->query($table, $b->id)->where($this->catalog->keyWhere($table, $key))->first();
+        $current = $current ? (array) $current : null;
+        $fields = [];
+        foreach (array_keys($version ?? []) as $col) {
+            $volatile = in_array($col, BackupCatalog::VOLATILE, true);
+            $fields[] = [
+                'name' => $col,
+                'value' => $version[$col] ?? null,
+                'now' => $current[$col] ?? null,
+                'differs' => ! $volatile && $current !== null && ! BackupCatalog::same($version[$col] ?? null, $current[$col] ?? null),
+                'changed' => ! $volatile && $previous !== null && ! BackupCatalog::same($previous[$col] ?? null, $version[$col] ?? null),
+                'was' => $previous[$col] ?? null,
+                'volatile' => $volatile,
+            ];
+        }
+        $diffOnly = $request->boolean('diff');
 
         return view('backups.record', [
             'table' => $table, 'key' => $key, 'changes' => $changes, 'selected' => $selected,
-            'version' => $version, 'previous' => $previous, 'current' => $current ? (array) $current : null, 'error' => $error,
+            'version' => $version, 'previous' => $previous, 'current' => $current, 'error' => $error,
+            'fields' => $diffOnly ? array_values(array_filter($fields, fn ($f) => $f['differs'] || $f['changed'])) : $fields,
+            'diffOnly' => $diffOnly,
+            'differCount' => count(array_filter($fields, fn ($f) => $f['differs'])),
+            'changedCount' => count(array_filter($fields, fn ($f) => $f['changed'])),
             'label' => BackupRecord::where('business_id', $b->id)->where('table_name', $table)->where('record_key', $key)->value('label') ?? '#'.$key,
             'files' => $this->filesFor($table, $version),
             'copyable' => in_array($table, BackupCatalog::COPYABLE, true),

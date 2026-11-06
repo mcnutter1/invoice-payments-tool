@@ -6,7 +6,8 @@
     $badge = ['created' => 'chip-green', 'updated' => 'chip-blue', 'deleted' => 'chip-red'];
     $show = fn ($v) => $v === null ? '—' : (is_bool($v) ? ($v ? 'true' : 'false') : \Illuminate\Support\Str::limit((string) $v, 300));
     $hidden = ['otp_hash', 'token_hash', 'tracking_hash', 'encrypted_body', 'tax_id_encrypted', 'signature_hash'];
-    $cols = $version ? array_keys($version) : [];
+    $mask = fn ($col, $v) => in_array($col, $hidden, true) && $v !== null ? '[hidden]' : $v;
+    $self = '?v='.($selected?->snapshot->ulid ?? '');
 @endphp
 <p class="text-sm"><a href="{{ $bu }}/backups">← Backups</a></p>
 <div class="mt-2 flex flex-wrap items-center justify-between gap-3">
@@ -39,7 +40,27 @@
         @if ($error)<div class="alert alert-warn">{{ $error }}</div>@endif
         @if ($version)
         <div class="card"><div class="card-head"><h2>Preview · {{ $selected->snapshot->started_at->timezone($tz)->format('M j, Y g:ia') }}</h2>
-            <span class="text-xs text-slate-500"><span class="chip chip-amber">differs from now</span> <span class="chip chip-blue">changed in this version</span></span></div>
+            @if ($differCount || $changedCount)
+                <a class="btn btn-sm" href="{{ $self }}{{ $diffOnly ? '' : '&diff=1' }}">{{ $diffOnly ? 'Show all fields' : 'Show only differences' }}</a>
+            @endif</div>
+            <div class="card-body flex flex-wrap gap-2 border-b border-slate-100 text-sm">
+                @if ($current === null)
+                    <span class="chip chip-red">Deleted since — restoring brings it back</span>
+                @elseif ($differCount)
+                    <span class="chip chip-amber">{{ $differCount }} field{{ $differCount === 1 ? '' : 's' }} differ{{ $differCount === 1 ? 's' : '' }} from now</span>
+                @else
+                    <span class="chip chip-green">Identical to the current record</span>
+                @endif
+                @if ($previous !== null)
+                    @if ($changedCount)
+                        <span class="chip chip-blue">{{ $changedCount }} field{{ $changedCount === 1 ? '' : 's' }} changed in this version</span>
+                    @else
+                        <span class="chip chip-gray">No content changes vs. the previous version (only timestamps)</span>
+                    @endif
+                @elseif ($selected->action === 'created')
+                    <span class="chip chip-gray">First backed-up version</span>
+                @endif
+            </div>
             @if ($files)
             <div class="card-body space-y-3 border-b border-slate-100">
                 @foreach ($files as $f)
@@ -56,21 +77,26 @@
             <div class="overflow-x-auto"><table class="tbl text-xs">
                 <thead><tr><th>Field</th><th>In this backup</th><th>Now</th></tr></thead>
                 <tbody>
-                @foreach ($cols as $col)
-                    @php
-                        $v = in_array($col, $hidden, true) ? '[hidden]' : ($version[$col] ?? null);
-                        $now = $current === null ? null : (in_array($col, $hidden, true) ? '[hidden]' : ($current[$col] ?? null));
-                        $diffNow = $current !== null && (string) $v !== (string) $now;
-                        $changedHere = $previous !== null && (string) ($previous[$col] ?? null) !== (string) ($version[$col] ?? null) && ! in_array($col, ['updated_at'], true);
-                    @endphp
-                    <tr>
-                        <td class="whitespace-nowrap font-medium">{{ $col }} @if($changedHere)<span class="chip chip-blue">changed</span>@endif</td>
-                        <td @class(['break-all', 'bg-blue-50' => $changedHere])>{{ $show($v) }}</td>
-                        <td @class(['break-all', 'bg-amber-50' => $diffNow, 'text-slate-400' => $current === null])>{{ $current === null ? 'deleted' : $show($now) }}</td>
+                @forelse ($fields as $f)
+                    @php $v = $mask($f['name'], $f['value']); $now = $mask($f['name'], $f['now']); @endphp
+                    <tr @class(['bg-amber-50' => $f['differs'], 'text-slate-400' => $f['volatile']])>
+                        <td class="whitespace-nowrap align-top">
+                            <span @class(['font-semibold text-slate-900' => $f['differs'] || $f['changed'], 'font-medium' => ! $f['differs'] && ! $f['changed']])>{{ $f['name'] }}</span>
+                            @if ($f['changed'])<br><span class="chip chip-blue">changed here</span>@endif
+                            @if ($f['differs'])<br><span class="chip chip-amber">differs now</span>@endif
+                        </td>
+                        <td class="break-all align-top">
+                            @if ($f['changed'])<div class="text-slate-400 line-through">{{ $show($mask($f['name'], $f['was'])) }}</div>@endif
+                            <span @class(['font-semibold text-blue-800' => $f['changed']])>{{ $show($v) }}</span>
+                        </td>
+                        <td @class(['break-all align-top', 'font-semibold text-amber-800' => $f['differs'], 'text-slate-400' => $current === null])>{{ $current === null ? 'deleted' : $show($now) }}</td>
                     </tr>
-                @endforeach
+                @empty
+                    <tr><td colspan="3" class="text-slate-500">No differences.</td></tr>
+                @endforelse
                 </tbody>
             </table></div>
+            <p class="card-body pt-2 hint">Timestamps and internal counters (greyed out) are ignored when comparing. Numbers, empty values and JSON are compared by meaning, not formatting.</p>
         </div>
 
         <form method="post" action="{{ $bu }}/backups/{{ $selected->snapshot->ulid }}/records/{{ $table }}/{{ $key }}/restore" class="card card-body space-y-3" data-confirm="Restore this version?">@csrf

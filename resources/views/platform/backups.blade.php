@@ -1,10 +1,9 @@
-@extends('layouts.guest', ['wide' => true])
+@extends('layouts.platform')
 @section('title', 'Application settings · Backups')
 @section('content')
 @php $fmt = fn ($n) => \App\Models\BackupSnapshot::humanBytes($n); $fresh = $heartbeat?->last_success_at && \Illuminate\Support\Carbon::parse($heartbeat->last_success_at)->gt(now()->subHours(2)); @endphp
 <div class="flex flex-wrap items-center justify-between gap-3">
-    <div><h1>Application settings</h1><p class="mt-1 text-sm text-slate-600">Backups for every business: hourly deltas and a daily full, stored in your S3 bucket and partitioned per business.</p></div>
-    <a class="btn" href="/platform">Platform operations</a>
+    <div><h1>Backups</h1><p class="mt-1 text-sm text-slate-600">Backups for every business: hourly deltas and a daily full, stored in your S3 bucket and partitioned per business.</p></div>
 </div>
 
 <div class="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">

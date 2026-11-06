@@ -1,7 +1,8 @@
 @extends('layouts.app')
 @section('title', 'Audit log')
 @section('content')
-<h1>Audit log</h1>
+@include('settings._tabs')
+<h2 class="text-lg">Audit log</h2>
 <form method="get" class="mt-4 flex gap-2"><label for="action" class="sr-only">Action prefix</label><input class="input max-w-xs" id="action" name="action" value="{{ request('action') }}" placeholder="Filter by action, e.g. invoice. or payment."><button class="btn">Filter</button></form>
 <div class="card mt-4 overflow-x-auto">
     <table class="tbl"><thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Object</th><th>Details</th></tr></thead><tbody>

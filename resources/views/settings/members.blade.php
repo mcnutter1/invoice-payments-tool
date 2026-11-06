@@ -1,7 +1,8 @@
 @extends('layouts.app')
 @section('title', 'Members')
 @section('content')
-<h1>Members</h1>
+@include('settings._tabs')
+<h2 class="text-lg">Members</h2>
 <p class="mt-1 text-sm text-slate-500">Members sign in with McNutt Cloud. Central admin roles never grant access to this business's books — only membership here does.</p>
 <div class="card mt-4 overflow-x-auto">
     <table class="tbl"><thead><tr><th>Member</th><th>Roles</th><th>Status</th><th></th></tr></thead><tbody>

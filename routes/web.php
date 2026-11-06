@@ -32,6 +32,10 @@ Route::middleware(['public.doc', 'throttle:public'])->group(function () {
     Route::get('/i/v/{ulid}/agreement', [C\PublicInvoiceController::class, 'agreement']);
     Route::get('/i/v/{ulid}/agreement/certificate', [C\PublicInvoiceController::class, 'agreementCertificate']);
     Route::post('/i/v/{ulid}/report-payment', [C\PublicInvoiceController::class, 'reportPayment'])->middleware('throttle:public-write');
+    Route::post('/i/v/{ulid}/w9', [C\PublicW9Controller::class, 'requestFromInvoice'])->middleware('throttle:public-write');
+    Route::post('/i/v/{ulid}/w9/download', [C\PublicW9Controller::class, 'downloadFromInvoice'])->middleware('throttle:public-write');
+    Route::get('/w9/{token}', [C\PublicW9Controller::class, 'show'])->middleware('throttle:public-token')->where('token', '[A-Za-z0-9_-]{40,64}');
+    Route::post('/w9/{token}', [C\PublicW9Controller::class, 'download'])->middleware('throttle:public-write')->where('token', '[A-Za-z0-9_-]{40,64}');
 
     Route::get('/c/{token}', [C\PublicContractController::class, 'exchange'])->middleware('throttle:public-token')->where('token', '[A-Za-z0-9_-]{40,64}');
     Route::get('/c/r/{recipient}', [C\PublicContractController::class, 'show'])->whereNumber('recipient');
@@ -119,6 +123,8 @@ Route::middleware('central')->group(function () {
             Route::post('/invoices/{id}/send', [C\InvoiceController::class, 'send'])->middleware('throttle:sensitive');
             Route::post('/invoices/{id}/revoke-links', [C\InvoiceController::class, 'revokeLinks']);
             Route::post('/invoices/{id}/auto-reminders', [C\InvoiceController::class, 'toggleReminders']);
+            Route::post('/clients/{id}/w9', [C\W9Controller::class, 'send'])->whereNumber('id')->middleware('throttle:sensitive');
+            Route::get('/clients/{id}/w9', [C\W9Controller::class, 'download'])->whereNumber('id');
             Route::post('/invoices/bulk-send', [C\InvoiceController::class, 'bulkSend'])->middleware('throttle:sensitive');
             Route::post('/outbox/{id}/resend', [C\InvoiceController::class, 'resendReviewed']);
         });
@@ -276,6 +282,8 @@ Route::middleware('central')->group(function () {
         Route::middleware('perm:business.manage')->group(function () {
             Route::post('/settings/profile', [C\SettingsController::class, 'updateProfile']);
             Route::post('/settings/reminders', [C\SettingsController::class, 'updateReminders']);
+            Route::post('/settings/w9', [C\W9Controller::class, 'update'])->middleware('central:fresh');
+            Route::get('/settings/w9/preview', [C\W9Controller::class, 'preview']);
             Route::post('/settings/branding', [C\SettingsController::class, 'updateBranding']);
             Route::post('/settings/payments', [C\SettingsController::class, 'updatePayments'])->middleware('central:fresh');
             Route::post('/settings/email', [C\SettingsController::class, 'updateEmail']);

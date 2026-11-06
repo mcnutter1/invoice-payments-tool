@@ -18,9 +18,15 @@ class SettingsController extends Controller
     public function index(NotificationGateway $notify)
     {
         $b = $this->biz();
+        $w9 = app(\App\Services\Tax\W9Service::class);
+        $w9Tin = $w9->tin($b);
 
         return view('settings.index', [
             'b' => $b,
+            'w9' => $w9->settings($b),
+            'w9Missing' => $w9->missing($b),
+            'w9Tin' => $w9Tin ? '•••••'.substr($w9Tin, -4) : null,
+            'signers' => \App\Models\Membership::with('user')->where('business_id', $b->id)->where('status', 'active')->get(),
             'taxId' => $b->tax_id_encrypted ? '•••••'.substr(decrypt($b->tax_id_encrypted), -4) : null,
             'notifyHealth' => $notify->health(),
             'fromHeader' => EmailComposer::fromHeader($b),

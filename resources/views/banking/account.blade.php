@@ -11,11 +11,8 @@
     </div>
     @endif
 </div>
-<nav class="mt-4 flex flex-wrap gap-1" aria-label="Row filters">
-    @foreach (['unmatched' => 'To review', 'matched' => 'Matched', 'posted' => 'Posted', 'excluded' => 'Excluded', 'all' => 'All'] as $k => $v)
-        <a href="?status={{ $k }}" class="btn btn-sm {{ $status === $k ? 'btn-primary' : '' }}">{{ $v }}</a>
-    @endforeach
-</nav>
+@include('partials.tabs', ['label' => 'Row filters', 'class' => 'mt-4', 'tabs' => collect(['unmatched' => 'To review', 'matched' => 'Matched', 'posted' => 'Posted', 'excluded' => 'Excluded', 'all' => 'All'])
+    ->map(fn ($v, $k) => [$v, '?status='.$k, $status === $k])->values()->all()])
 <div class="card mt-3 overflow-x-auto">
     <table class="tbl"><thead><tr><th>Date</th><th>Description</th><th class="num">Amount</th><th>Status</th><th class="min-w-[22rem]">Action</th></tr></thead><tbody>
     @forelse ($txns as $t)

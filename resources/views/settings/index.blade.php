@@ -2,19 +2,11 @@
 @section('title', 'Settings')
 @section('content')
 @php $dis = $canManage ? '' : 'disabled'; @endphp
-<div class="flex flex-wrap items-center justify-between gap-3">
-    <h1>Settings</h1>
-    <nav class="flex flex-wrap gap-1">
-        <a class="btn btn-sm" href="#profile">Profile</a><a class="btn btn-sm" href="#reminders">Reminders</a><a class="btn btn-sm" href="#branding">Branding</a><a class="btn btn-sm" href="#payments">Payment instructions</a><a class="btn btn-sm" href="#email">Email</a>
-        @if ($ctx->can('members.manage'))<a class="btn btn-sm" href="{{ $bu }}/settings/members">Members</a>@endif
-        @if ($ctx->can('roles.manage'))<a class="btn btn-sm" href="{{ $bu }}/settings/roles">Roles</a>@endif
-        @if ($ctx->can('automation.view'))<a class="btn btn-sm" href="{{ $bu }}/automation">Automation</a>@endif
-        @if ($ctx->can('audit.view'))<a class="btn btn-sm" href="{{ $bu }}/audit">Audit log</a>@endif
-        @if ($ctx->can('business.manage'))<a class="btn btn-sm" href="{{ $bu }}/backups">Backups</a>@endif
-        @if ($ctx->can('journals.manage') && $ctx->can('clients.manage'))<a class="btn btn-sm" href="{{ $bu }}/migration">Data import</a>@endif
-        <a class="btn btn-sm" href="{{ $bu }}/vendors">Vendors</a>
-    </nav>
-</div>
+@include('settings._tabs')
+<nav class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm" aria-label="On this page">
+    <span class="text-xs font-medium uppercase tracking-wide text-slate-400">On this page</span>
+    <a href="#profile">Profile</a><a href="#reminders">Reminders</a><a href="#w9">W-9</a><a href="#branding">Branding</a><a href="#payments">Payment instructions</a><a href="#email">Email</a>
+</nav>
 
 <form id="profile" method="post" action="{{ $bu }}/settings/profile" class="card mt-4">@csrf
     <div class="card-head"><h2>Business profile</h2></div>
@@ -58,6 +50,53 @@
         @endforeach
         <p class="hint">Agreements: each signer is reminded until they sign or the link expires. Unviewed invoices: until the client opens the invoice page or PDF (email-open pixels don’t count, since mail scanners trigger them). Past-due invoices: counted from the due date; the email asks the client to report payment or a mailed check. Reminders pause after a payment report (see Profile). Runs daily; every reminder is recorded in the audit log.</p>
         <div><button class="btn btn-primary">Save reminders</button></div>
+    </fieldset>
+</form>
+
+<form id="w9" method="post" action="{{ $bu }}/settings/w9" class="card mt-4 scroll-mt-4">@csrf
+    <div class="card-head"><h2>Form W-9 (your taxpayer information)</h2>
+        <span class="flex items-center gap-2">
+            <span class="chip {{ $w9Missing ? 'chip-amber' : 'chip-green' }}">{{ $w9Missing ? 'Incomplete' : 'Ready to send' }}</span>
+            @if (! $w9Missing && $canManage)<a class="btn btn-sm" href="{{ $bu }}/settings/w9/preview" target="_blank" rel="noopener">Preview PDF</a>@endif
+        </span></div>
+    <fieldset class="card-body grid gap-4 sm:grid-cols-2" {{ $dis }}>
+        @if ($w9Missing)<div class="alert alert-warn sm:col-span-2">Still needed: {{ implode(', ', $w9Missing) }}.</div>@endif
+        <p class="hint sm:col-span-2">These details fill in IRS Form W-9 (Rev. March 2024) automatically whenever you send it to a client or a client requests it from an invoice. Defaults come from your business profile.</p>
+        <div><label class="label" for="w9-name">1 · Name of entity/individual</label><input class="input" id="w9-name" name="name" value="{{ old('name', $w9['name']) }}" required><p class="hint">For a sole proprietor or disregarded entity, the owner’s name.</p></div>
+        <div><label class="label" for="w9-bn">2 · Business name / disregarded entity (if different)</label><input class="input" id="w9-bn" name="business_name" value="{{ old('business_name', $w9['business_name']) }}"></div>
+        <div><label class="label" for="w9-class">3a · Federal tax classification</label>
+            <select class="input" id="w9-class" name="classification" required><option value="">Choose…</option>
+                @foreach (\App\Services\Tax\W9Service::CLASSIFICATIONS as $k => $v)<option value="{{ $k }}" @selected(old('classification', $w9['classification']) === $k)>{{ $v }}</option>@endforeach
+            </select></div>
+        <div class="grid grid-cols-2 gap-2">
+            <div><label class="label" for="w9-llc">LLC classification</label><select class="input" id="w9-llc" name="llc_code"><option value="">—</option>@foreach (['C' => 'C — C corporation', 'S' => 'S — S corporation', 'P' => 'P — Partnership'] as $k => $v)<option value="{{ $k }}" @selected(old('llc_code', $w9['llc_code']) === $k)>{{ $v }}</option>@endforeach</select></div>
+            <div><label class="label" for="w9-other">“Other” description</label><input class="input" id="w9-other" name="other_text" value="{{ old('other_text', $w9['other_text']) }}"></div>
+        </div>
+        <label class="flex items-start gap-2 text-sm sm:col-span-2"><input type="hidden" name="foreign_partners" value="0"><input class="check mt-0.5" type="checkbox" name="foreign_partners" value="1" @checked($w9['foreign_partners'])> 3b · Has foreign partners, owners or beneficiaries (only for partnerships, trusts/estates, or LLCs taxed as partnerships)</label>
+        <div class="grid grid-cols-2 gap-2">
+            <div><label class="label" for="w9-exempt">4 · Exempt payee code</label><input class="input" id="w9-exempt" name="exempt_payee_code" value="{{ old('exempt_payee_code', $w9['exempt_payee_code']) }}" placeholder="Usually blank"></div>
+            <div><label class="label" for="w9-fatca">FATCA exemption code</label><input class="input" id="w9-fatca" name="fatca_code" value="{{ old('fatca_code', $w9['fatca_code']) }}" placeholder="Usually blank"></div>
+        </div>
+        <div><label class="label" for="w9-acct">7 · Account number(s) (optional)</label><input class="input" id="w9-acct" name="account_numbers" value="{{ old('account_numbers', $w9['account_numbers']) }}"></div>
+        <div><label class="label" for="w9-addr">5 · Address (number, street, suite)</label><input class="input" id="w9-addr" name="address" value="{{ old('address', $w9['address']) }}" required></div>
+        <div><label class="label" for="w9-csz">6 · City, state, and ZIP code</label><input class="input" id="w9-csz" name="city_state_zip" value="{{ old('city_state_zip', $w9['city_state_zip']) }}" required></div>
+        <div><label class="label" for="w9-tintype">Part I · Taxpayer ID type</label>
+            <select class="input" id="w9-tintype" name="tin_type"><option value="ein" @selected($w9['tin_type'] === 'ein')>Employer identification number (EIN)</option><option value="ssn" @selected($w9['tin_type'] === 'ssn')>Social security number (SSN)</option></select></div>
+        <div><label class="label" for="w9-tin">Taxpayer ID number</label><input class="input" id="w9-tin" name="tin" autocomplete="off" inputmode="numeric" placeholder="{{ $w9Tin ?? 'Not set — 9 digits' }}">
+            @error('tin')<p class="mt-1 text-xs text-red-700">{{ $message }}</p>@enderror
+            <p class="hint">Stored encrypted; leave blank to keep the current number. Uses the EIN from your profile if none is entered here.</p></div>
+        <div><label class="label" for="w9-signer">Part II · Signer name</label><input class="input" id="w9-signer" name="signer_name" value="{{ old('signer_name', $w9['signer_name']) }}" required></div>
+        <div><label class="label" for="w9-sig">Signature</label>
+            <select class="input" id="w9-sig" name="signer_membership_id"><option value="">Typed signature (/s/ name)</option>
+                @foreach ($signers as $m)<option value="{{ $m->id }}" @selected((int) $w9['signer_membership_id'] === $m->id) @disabled(! $m->signature_document_id)>{{ $m->user?->label() }}{{ $m->signature_document_id ? '’s saved signature' : ' (no saved signature)' }}</option>@endforeach
+            </select><p class="hint">Members save a signature under “My signature”.</p></div>
+        <label class="flex items-start gap-2 text-sm sm:col-span-2"><input type="hidden" name="backup_withholding" value="0"><input class="check mt-0.5" type="checkbox" name="backup_withholding" value="1" @checked($w9['backup_withholding'])> The IRS has notified us that we are currently subject to backup withholding (crosses out certification item 2)</label>
+        <div class="grid gap-2 sm:col-span-2 sm:grid-cols-3">
+            <div><label class="label" for="w9-ttl">Link expires after (days)</label><input class="input" id="w9-ttl" name="link_ttl_days" type="number" min="1" max="60" value="{{ old('link_ttl_days', $w9['link_ttl_days']) }}"></div>
+            <div><label class="label" for="w9-max">Downloads allowed per link</label><input class="input" id="w9-max" name="max_downloads" type="number" min="1" max="50" value="{{ old('max_downloads', $w9['max_downloads']) }}"></div>
+            <label class="flex items-center gap-2 self-end text-sm"><input type="hidden" name="allow_client_requests" value="0"><input class="check" type="checkbox" name="allow_client_requests" value="1" @checked($w9['allow_client_requests'])> Let clients request it from invoices</label>
+        </div>
+        <div><button class="btn btn-primary">Save W-9 details</button></div>
     </fieldset>
 </form>
 

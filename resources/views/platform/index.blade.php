@@ -1,11 +1,8 @@
-@extends('layouts.guest')
+@extends('layouts.platform')
 @section('title', 'Platform operations')
 @section('content')
 <h1>Platform operations</h1>
 <p class="mt-1 text-sm text-slate-600">Operational settings only. Nothing here grants access to any business's books.</p>
-@if ($isAdmin)
-    <a class="btn mt-4" href="/platform/backups">Backups →</a>
-@endif
 <div class="mt-6 grid gap-4 sm:grid-cols-2">
     @foreach (['Auth (McNutt Cloud)' => $auth, 'Notifications' => $notify] as $label => $h)
         <div class="card card-body">

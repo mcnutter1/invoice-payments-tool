@@ -21,6 +21,7 @@ class BackupRunner
         private readonly BackupSettings $settings,
         private readonly BackupCatalog $catalog,
         private readonly BackupReader $reader,
+        private readonly BackupSearchIndex $search,
     ) {}
 
     public function nextType(Business $b): string
@@ -58,7 +59,8 @@ class BackupRunner
         $prevKeys = $last ? (self::decodeManifest($last->manifest) ?? ($this->reader->payload($last)['keys'] ?? null)) : null;
         $prevChanged = $last ? BackupChange::where('snapshot_id', $last->id)->get(['table_name', 'record_key'])
             ->mapWithKeys(fn ($c) => [$c->table_name.'|'.$c->record_key => true])->all() : [];
-        $rows = $keys = $changes = $stats = [];
+        $rows = $keys = $changes = $stats = $hashes = $texts = [];
+        $maps = $this->search->maps($b->id);
         $rowCount = 0;
 
         foreach (BackupCatalog::TABLES as $t) {
@@ -75,13 +77,19 @@ class BackupRunner
 
             if (! isset(BackupCatalog::ENTITIES[$t])) continue;
             $prev = $prevKeys !== null ? array_flip($prevKeys[$t] ?? []) : null;
+            $knownHashes = BackupRecord::where('business_id', $b->id)->where('table_name', $t)->whereNotNull('row_hash')->pluck('row_hash', 'record_key');
             foreach ($changed as $r) {
                 $k = $this->catalog->keyOf($t, $r);
                 $isNew = $prev === null || ! isset($prev[$k]);
+                $hash = BackupCatalog::contentHash($r);
+                // Saved without any real change (only timestamps moved): not a new version.
+                if (! $isNew && ($knownHashes[$k] ?? null) === $hash) continue;
                 $at = $meta['ts'] ? ($r[$meta['ts']] ?? null) : null;
                 // Unchanged rows re-read in the overlap window were already recorded by the previous point.
                 if (! $isNew && isset($prevChanged[$t.'|'.$k]) && $at && $at <= $last->started_at->format('Y-m-d H:i:s')) continue;
                 $changes[] = ['table_name' => $t, 'record_key' => $k, 'action' => $isNew ? 'created' : 'updated', 'label' => $this->catalog->label($t, $r), 'changed_at' => $at ?? now()];
+                $hashes[$t.'|'.$k] = $hash;
+                $texts[$t.'|'.$k] = $this->search->text($t, $r, $maps);
                 $stats[$t]['changed']++;
             }
             if ($prev !== null) {
@@ -109,13 +117,15 @@ class BackupRunner
         $objectKey = $this->settings->prefix().'/businesses/'.$b->ulid.'/snapshots/'.$snap->started_at->format('Y/m/d').'/'.$snap->ulid.'-'.$snap->type.'.bin';
         $store->put($objectKey, $bytes, $class);
 
-        DB::transaction(function () use ($b, $snap, $changes, $objectKey, $bytes, $rowCount, $stats, $files, $class, $keys) {
+        DB::transaction(function () use ($b, $snap, $changes, $objectKey, $bytes, $rowCount, $stats, $files, $class, $keys, $hashes, $texts) {
             foreach (array_chunk($changes, 500) as $chunk) {
                 BackupChange::insert(array_map(fn ($c) => $c + ['snapshot_id' => $snap->id, 'business_id' => $b->id], $chunk));
             }
             foreach ($changes as $c) {
                 $rec = BackupRecord::firstOrNew(['business_id' => $b->id, 'table_name' => $c['table_name'], 'record_key' => $c['record_key']]);
-                $rec->fill(['label' => $c['label'], 'last_snapshot_id' => $snap->id, 'last_changed_at' => $c['changed_at'], 'deleted' => $c['action'] === 'deleted']);
+                $rec->fill(['label' => $c['label'], 'last_snapshot_id' => $snap->id, 'last_changed_at' => $c['changed_at'], 'deleted' => $c['action'] === 'deleted',
+                    'row_hash' => $hashes[$c['table_name'].'|'.$c['record_key']] ?? null]);
+                if (isset($texts[$c['table_name'].'|'.$c['record_key']])) $rec->search_text = $texts[$c['table_name'].'|'.$c['record_key']];
                 $rec->versions = ($rec->versions ?? 0) + 1;
                 $rec->save();
             }

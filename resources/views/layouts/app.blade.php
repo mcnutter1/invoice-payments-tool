@@ -24,7 +24,7 @@
         ['Banking', '/banking', $ctx->can('banking.view'), 'banking'],
         ['Reports', '/reports', $ctx->canAny('reports.ar.view', 'reports.pnl.view'), 'reports'],
         ['Accounting', '/accounts', $ctx->can('journals.view'), 'accounts|journals|periods'],
-        ['Settings', '/settings', $ctx->can('business.view'), 'settings|automation|audit'],
+        ['Settings', '/settings', $ctx->can('business.view'), 'settings|automation|audit|backups|migration|vendors'],
     ];
     $seg = request()->segment(3) ?? '';
 @endphp
@@ -93,8 +93,10 @@
             <div class="menu right-0">
                 <div class="px-3 py-2 text-xs text-slate-500">{{ $ctx->user->email }}</div>
                 @if ($ctx->can('contracts.countersign'))<a href="{{ $bu }}/my-signature">My signature</a>@endif
-                @if ($ctx->user->isPlatformAdmin())<a href="/platform/backups">Application settings</a>@endif
                 <form method="post" action="/auth/logout">@csrf<button type="submit">Sign out</button></form>
+                @if ($ctx->user->isPlatformAdmin())
+                    <div class="mt-1 border-t border-slate-100 pt-1"><a href="/platform/backups">Application settings</a></div>
+                @endif
             </div>
         </details>
     </div>

@@ -1,7 +1,8 @@
 @extends('layouts.app')
 @section('title', 'Automation monitor')
 @section('content')
-<h1>Automation monitor</h1>
+@include('settings._tabs')
+<h2 class="text-lg">Automation monitor</h2>
 @php
     $hb = fn ($n) => $heartbeats[$n] ?? null;
     $age = fn ($t) => $t ? \Illuminate\Support\Carbon::parse($t)->diffForHumans() : 'never';

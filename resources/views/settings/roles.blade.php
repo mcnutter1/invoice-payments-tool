@@ -1,7 +1,8 @@
 @extends('layouts.app')
 @section('title', 'Roles')
 @section('content')
-<h1>Roles &amp; permissions</h1>
+@include('settings._tabs')
+<h2 class="text-lg">Roles &amp; permissions</h2>
 <p class="mt-1 text-sm text-slate-500">You can only grant or remove permissions you hold yourself. The Owner role is fixed.</p>
 @php $groups = collect($catalog)->groupBy(fn ($v) => $v[0], true); @endphp
 <div class="mt-4 space-y-4">

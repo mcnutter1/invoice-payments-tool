@@ -1,7 +1,8 @@
 @extends('layouts.app')
 @section('title', 'Data import')
 @section('content')
-<h1>Data import &amp; migration</h1>
+@include('settings._tabs')
+<h2 class="text-lg">Data import &amp; migration</h2>
 <p class="mt-1 max-w-3xl text-sm text-slate-500">Move from QuickBooks or spreadsheets using CSV templates. Every import shows a dry-run preview first, skips duplicates by key, and is tracked as a batch. See docs/MIGRATION.md for the QuickBooks export mapping and the cutoff policy.</p>
 <div class="mt-4 grid gap-4 lg:grid-cols-2">
     <form method="post" action="{{ $bu }}/migration" enctype="multipart/form-data" class="card card-body space-y-3">@csrf

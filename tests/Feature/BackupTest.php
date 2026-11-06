@@ -262,6 +262,55 @@ class BackupTest extends TestCase
         $this->assertSame('Weekly backup summary — restore test failed', end(\App\Services\Notifications\LogNotificationGateway::$sent)->subject);
     }
 
+    public function test_timestamp_only_saves_are_not_versions_and_preview_flags_real_differences(): void
+    {
+        [$owner, $biz, $client] = $this->setupBusiness();
+        $runner = app(BackupRunner::class);
+        $full = $runner->run($biz);
+        $this->travel(1)->hours();
+        $client->touch();
+        $delta = $runner->run($biz);
+        $this->assertSame(0, BackupChange::where('snapshot_id', $delta->id)->where('table_name', 'clients')->count());
+
+        $url = "/b/{$biz->ulid}/backups/records/clients/{$client->id}?v={$full->ulid}";
+        $this->signIn($owner)->get($url)->assertOk()->assertSee('Identical to the current record')->assertDontSee('differs now');
+
+        $this->travel(1)->hours();
+        $client->update(['display_name' => 'Acme Widgets LLC']);
+        $runner->run($biz);
+        $this->signIn($owner)->get($url)->assertOk()->assertSee('1 field differs from now')->assertSee('differs now');
+        $this->signIn($owner)->get($url.'&diff=1')->assertOk()->assertSee('display_name')->assertDontSee('>legal_name<', false);
+        $this->assertTrue(\App\Services\Backups\BackupCatalog::same('2.0000', 2));
+        $this->assertTrue(\App\Services\Backups\BackupCatalog::same('{"b":1,"a":2}', '{"a": 2, "b": 1}'));
+        $this->assertTrue(\App\Services\Backups\BackupCatalog::same('', null));
+        $this->assertFalse(\App\Services\Backups\BackupCatalog::same('Acme', 'Acme Inc'));
+    }
+
+    public function test_search_finds_records_by_related_names(): void
+    {
+        [$owner, $biz, , $inv] = $this->setupBusiness();
+        $client2 = $this->makeClient($biz, 'Signer Co');
+        $svc = app(\App\Services\Contracts\ContractService::class);
+        $c = $svc->create($biz, [
+            'client_id' => $client2->id, 'title' => 'Retainer Agreement', 'template_id' => $biz->contractTemplates()->value('id'),
+            'effective_date' => '2026-07-01', 'scope' => 'Advisory', 'fees' => '$1,000 / month', 'signing_order' => 'parallel',
+            'signers' => [['name' => 'Pat Quill', 'email' => 'pat@example.test']],
+        ]);
+        app(BackupRunner::class)->run($biz);
+        $search = fn (string $q, ?string $type = null) => $this->signIn($owner)->get("/b/{$biz->ulid}/backups?".http_build_query(array_filter(['q' => $q, 'type' => $type])));
+
+        $search('acme widgets', 'invoices')->assertOk()->assertSee($inv->number)->assertSee('1 match');
+        $search('Quill', 'contracts')->assertOk()->assertSee('Retainer Agreement');
+        $search('retainer signer', 'contracts')->assertOk()->assertSee('1 match');
+        $search('nothing-like-this')->assertOk()->assertSee('Nothing matched');
+        $search('100%')->assertOk();
+
+        // Records indexed before search text existed are filled in on first search.
+        BackupRecord::where('business_id', $biz->id)->update(['search_text' => null]);
+        $search('acme widgets', 'invoices')->assertOk()->assertSee($inv->number);
+        $this->assertSame(0, BackupRecord::where('business_id', $biz->id)->where('deleted', false)->whereNull('search_text')->count());
+    }
+
     public function test_s3_requests_are_signed_with_sigv4(): void
     {
         Http::fake(['*' => Http::response('hello', 200)]);

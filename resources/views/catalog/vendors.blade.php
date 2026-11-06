@@ -1,7 +1,8 @@
 @extends('layouts.app')
 @section('title', 'Vendors')
 @section('content')
-<h1>Vendors</h1>
+@include('settings._tabs')
+<h2 class="text-lg">Vendors</h2>
 <div class="mt-4 grid gap-4 lg:grid-cols-3">
     <div class="card overflow-x-auto lg:col-span-2">
         <table class="tbl"><thead><tr><th>Name</th><th>Email</th><th>Default category</th><th>Status</th></tr></thead><tbody>

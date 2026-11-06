@@ -24,6 +24,7 @@ class EmailTracker
         'payment_reported' => 'Reported a payment',
         'contract_viewed' => 'Opened the agreement',
         'contract_downloaded' => 'Downloaded the agreement',
+        'w9_downloaded' => 'Downloaded your W-9',
     ];
 
     public const CLICK_ACTIONS = [

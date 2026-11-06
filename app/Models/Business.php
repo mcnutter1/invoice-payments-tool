@@ -16,6 +16,7 @@ class Business extends Model
         'reminder_settings' => 'array',
         'show_tax_id' => 'boolean',
         'backups_enabled' => 'boolean',
+        'w9_settings' => 'array',
         'books_closed_through' => 'date',
         'payment_instructions_changed_at' => 'datetime',
     ];

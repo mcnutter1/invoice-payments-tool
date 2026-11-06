@@ -264,6 +264,22 @@ class EmailComposer
         ], ['contract_version_id' => $v->id, 'contract_recipient_id' => $r->id]);
     }
 
+    public function queueW9(Business $business, \App\Models\Client $client, string $to, string $url, \App\Models\PublicToken $token, ?string $message = null): EmailOutbox
+    {
+        return $this->queue($business, 'w9', $to, 'Form W-9 from '.$business->name(), [
+            'tag' => 'Form W-9',
+            'greeting' => 'Hello'.($client->display_name ? ' '.$client->display_name : '').',',
+            'paragraphs' => array_values(array_filter([
+                $message,
+                $business->name().' has provided its completed IRS Form W-9 for your records. You can download it as a PDF below.',
+            ])),
+            'buttons' => [['label' => 'Download W-9', 'url' => $url]],
+            'notes' => ['This link was created for '.$to.' and is available until '.$token->expires_at->format('F j, Y')
+                .($token->max_uses ? ' (up to '.$token->max_uses.' downloads)' : '').'. Need it again later? Contact '.$business->name().self::contactSuffix($business).'.'],
+            'signoff' => 'Thank you,',
+        ]);
+    }
+
     public function queueSigningCode(ContractRecipient $r, string $code): void
     {
         $business = Business::find($r->business_id);

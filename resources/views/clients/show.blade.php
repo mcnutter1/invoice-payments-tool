@@ -11,6 +11,7 @@
         @if ($ctx->can('payments.record'))<a class="btn" href="{{ $bu }}/payments/new?client={{ $client->id }}">Receive payment</a>@endif
         @if ($ctx->can('contracts.manage'))<a class="btn" href="{{ $bu }}/contracts/new?client={{ $client->id }}">New contract</a>@endif
         @if ($ctx->can('invoices.view'))<a class="btn" href="{{ $bu }}/clients/{{ $client->id }}/statement">Statement</a>@endif
+        @if ($ctx->can('invoices.send'))<a class="btn" href="?w9=1#w9">Send W-9</a>@endif
         @if ($ctx->can('clients.manage'))
             <a class="btn" href="{{ $bu }}/clients/{{ $client->id }}/edit">Edit</a>
             <form method="post" action="{{ $bu }}/clients/{{ $client->id }}/archive">@csrf<button class="btn btn-ghost">{{ $client->status === 'archived' ? 'Restore' : 'Archive' }}</button></form>
@@ -113,6 +114,28 @@
                     <td>@include('partials.status', ['s' => $s->status])</td></tr>
             @endforeach
             </tbody></table></div>
+        @endif
+        @if ($ctx->can('invoices.send'))
+        @php $w9 = app(\App\Services\Tax\W9Service::class); $w9Missing = $w9->missing($biz); @endphp
+        <details id="w9" class="card scroll-mt-4" @if($errors->has('recipients') || request('w9')) open @endif>
+            <summary class="card-head cursor-pointer list-none"><h2>Send our W-9</h2><span class="text-xs text-slate-500">{{ $w9Missing ? 'Set up needed' : 'Show' }}</span></summary>
+            <div class="card-body space-y-3 text-sm">
+            @if ($w9Missing)
+                <p class="text-slate-600">Fill in your W-9 details once in <a href="{{ $bu }}/settings#w9">Settings → W-9</a>. Still needed: {{ implode(', ', $w9Missing) }}.</p>
+            @else
+                <form method="post" action="{{ $bu }}/clients/{{ $client->id }}/w9" class="space-y-2">@csrf
+                    @foreach ($client->recipientOptions() as $opt)
+                        <label class="flex items-center gap-2"><input class="check" type="checkbox" name="recipient_emails[]" value="{{ $opt['email'] }}" @checked($opt['billing'])> {{ $opt['email'] }} <span class="text-xs text-slate-500">{{ $opt['label'] }}</span></label>
+                    @endforeach
+                    <div><label class="label" for="w9-to">Other recipients</label><input class="input" id="w9-to" name="recipients" placeholder="ap@client.com" value="{{ old('recipients') }}">
+                        @error('recipients')<p class="mt-1 text-xs text-red-700">{{ $message }}</p>@enderror</div>
+                    <div><label class="label" for="w9-msg">Message (optional)</label><textarea class="input" id="w9-msg" name="message" rows="2">{{ old('message') }}</textarea></div>
+                    <div class="flex flex-wrap gap-2"><button class="btn btn-primary">Email W-9</button><a class="btn" href="{{ $bu }}/clients/{{ $client->id }}/w9">Download PDF</a></div>
+                    <p class="hint">Clients get a private link that expires in {{ $w9->settings($biz)['link_ttl_days'] }} days and allows {{ $w9->settings($biz)['max_downloads'] }} downloads. The PDF is generated on demand and never stored.</p>
+                </form>
+            @endif
+            </div>
+        </details>
         @endif
         @if ($activity->isNotEmpty())
         <div class="card"><div class="card-head"><h2>Activity</h2></div><ul class="card-body space-y-1 text-sm">

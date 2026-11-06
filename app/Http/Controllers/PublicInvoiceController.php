@@ -104,6 +104,7 @@ class PublicInvoiceController extends Controller
             'canReport' => $t->allows('report_payment') && $invoice->status === 'issued' && $invoice->balance_cents > 0,
             'reviewing' => (bool) $suppressed,
             'openReport' => $request->boolean('report'),
+            'w9Available' => $invoice->status === 'issued' && ($w9 = app(\App\Services\Tax\W9Service::class))->settings($business)['allow_client_requests'] && $w9->ready($business),
         ]);
     }
 
