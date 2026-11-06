@@ -22,8 +22,7 @@ class W9Controller extends Controller
             'business_name' => ['nullable', 'string', 'max:200'],
             'classification' => ['required', Rule::in(array_keys(W9Service::CLASSIFICATIONS))],
             'llc_code' => ['nullable', 'required_if:classification,llc', Rule::in(['C', 'S', 'P'])],
-            'other_text' => ['nullable', 'required_if:classification,other', 'string', 'max:80'],
-            'foreign_partners' => ['nullable', 'boolean'],
+            'other_text' => ['nullable', 'required_if:classification,other', 'string', 'max:80'],            'foreign_partners' => ['nullable', 'boolean'],
             'exempt_payee_code' => ['nullable', 'string', 'max:4', 'regex:/^[0-9]{0,2}$/'],
             'fatca_code' => ['nullable', 'string', 'max:2', 'regex:/^[A-Ma-m]?$/'],
             'address' => ['required', 'string', 'max:200'],
@@ -37,18 +36,26 @@ class W9Controller extends Controller
             'link_ttl_days' => ['required', 'integer', 'min:1', 'max:60'],
             'max_downloads' => ['required', 'integer', 'min:1', 'max:50'],
             'allow_client_requests' => ['nullable', 'boolean'],
-        ], ['llc_code.required_if' => 'Choose the LLC’s tax classification (C, S or P).']);
+        ], ['llc_code.required_if' => 'Choose how the LLC is taxed (C corporation, S corporation or partnership).']);
+        if ($data['classification'] === 'disregarded' && trim((string) ($data['business_name'] ?? '')) === '') {
+            return back()->withErrors(['business_name' => 'Enter the LLC’s name on line 2 (line 1 is the owner’s name).'])->withInput();
+        }
         if (! empty($data['tin']) && strlen(preg_replace('/\D/', '', $data['tin'])) !== 9) {
             return back()->withErrors(['tin' => 'A TIN has exactly 9 digits.'])->withInput();
         }
         if (! empty($data['signer_membership_id']) && ! Membership::where('business_id', $b->id)->whereKey($data['signer_membership_id'])->exists()) {
             $data['signer_membership_id'] = null;
         }
+        $class = $data['classification'];
         $settings = array_merge(collect($data)->except('tin')->all(), [
-            'foreign_partners' => $request->boolean('foreign_partners'), 'backup_withholding' => $request->boolean('backup_withholding'),
+            // Fields that don't apply to the chosen classification are cleared so they never print.
+            'foreign_partners' => in_array($class, W9Service::FOREIGN_PARTNER_CLASSES, true) && $request->boolean('foreign_partners'),
+            'backup_withholding' => $request->boolean('backup_withholding'),
             'allow_client_requests' => $request->boolean('allow_client_requests'),
-            'llc_code' => $data['classification'] === 'llc' ? strtoupper((string) $data['llc_code']) : '',
-            'fatca_code' => strtoupper((string) ($data['fatca_code'] ?? '')),
+            'llc_code' => $class === 'llc' ? strtoupper((string) $data['llc_code']) : '',
+            'other_text' => $class === 'other' ? (string) $data['other_text'] : '',
+            'exempt_payee_code' => in_array($class, W9Service::NO_EXEMPTION_CLASSES, true) ? '' : (string) ($data['exempt_payee_code'] ?? ''),
+            'fatca_code' => in_array($class, W9Service::NO_EXEMPTION_CLASSES, true) ? '' : strtoupper((string) ($data['fatca_code'] ?? '')),
         ]);
         $before = $b->w9_settings;
         $b->update(['w9_settings' => $settings]);
@@ -61,9 +68,8 @@ class W9Controller extends Controller
     public function preview()
     {
         $b = $this->biz();
-        Audit::log($b, 'w9.previewed', $b);
 
-        return response($this->w9->render($b), 200, ['Content-Type' => 'application/pdf', 'Content-Disposition' => 'inline; filename="W-9 preview.pdf"', 'Cache-Control' => 'private, no-store']);
+        return response($this->w9->render($b, null, true), 200, ['Content-Type' => 'application/pdf', 'Content-Disposition' => 'inline; filename="W-9 preview.pdf"', 'Cache-Control' => 'private, no-store']);
     }
 
     public function download(int $id)

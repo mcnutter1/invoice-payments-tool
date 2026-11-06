@@ -19,10 +19,28 @@ use Illuminate\Support\Facades\Crypt;
 /** The business's own IRS Form W-9: settings, PDF generation and expiring delivery links. */
 class W9Service
 {
+    /** What the business is, in plain terms; formBox() maps each to the box checked on line 3a. */
     public const CLASSIFICATIONS = [
-        'individual' => 'Individual/sole proprietor', 'c_corp' => 'C corporation', 's_corp' => 'S corporation',
-        'partnership' => 'Partnership', 'trust' => 'Trust/estate', 'llc' => 'LLC', 'other' => 'Other',
+        'individual' => 'Individual / sole proprietor',
+        'disregarded' => 'Single-member LLC owned by an individual (disregarded entity)',
+        'c_corp' => 'C corporation',
+        's_corp' => 'S corporation',
+        'partnership' => 'Partnership',
+        'trust' => 'Trust / estate',
+        'llc' => 'LLC that elected to be taxed as a C corp, S corp or partnership',
+        'other' => 'Other',
     ];
+
+    /** Line 3b and the LLC code only apply to some classifications. */
+    public const FOREIGN_PARTNER_CLASSES = ['partnership', 'trust', 'llc'];
+
+    public const NO_EXEMPTION_CLASSES = ['individual', 'disregarded'];
+
+    /** A disregarded single-member LLC checks its owner's box (Individual/sole proprietor). */
+    public static function formBox(string $classification): string
+    {
+        return $classification === 'disregarded' ? 'individual' : $classification;
+    }
 
     public function __construct(
         private readonly PdfRenderer $pdf,
@@ -33,7 +51,8 @@ class W9Service
 
     public function settings(Business $b): array
     {
-        $fromEntity = ['llc' => 'llc', 'sole_proprietor' => 'individual', 's_corp' => 's_corp', 'c_corp' => 'c_corp', 'partnership' => 'partnership'];
+        // An LLC's W-9 box depends on how it's taxed, so it must be chosen explicitly.
+        $fromEntity = ['sole_proprietor' => 'individual', 's_corp' => 's_corp', 'c_corp' => 'c_corp', 'partnership' => 'partnership'];
 
         return array_merge([
             'name' => $b->legal_name,
@@ -74,7 +93,8 @@ class W9Service
         return array_values(array_filter([
             trim((string) $s['name']) === '' ? 'Name (line 1)' : null,
             ! isset(self::CLASSIFICATIONS[$s['classification']]) ? 'Federal tax classification (line 3a)' : null,
-            $s['classification'] === 'llc' && ! in_array($s['llc_code'], ['C', 'S', 'P'], true) ? 'LLC tax classification code (C, S or P)' : null,
+            $s['classification'] === 'llc' && ! in_array($s['llc_code'], ['C', 'S', 'P'], true) ? 'How the LLC is taxed (C, S or P)' : null,
+            $s['classification'] === 'disregarded' && trim((string) $s['business_name']) === '' ? 'LLC name (line 2)' : null,
             $s['classification'] === 'other' && trim((string) $s['other_text']) === '' ? 'Description for “Other” classification' : null,
             trim((string) $s['address']) === '' || trim((string) $s['city_state_zip']) === '' ? 'Address (lines 5 and 6)' : null,
             ! $this->tin($b) ? 'Taxpayer identification number (9 digits)' : null,
@@ -87,9 +107,11 @@ class W9Service
         return ! $this->missing($b);
     }
 
-    public function render(Business $b, ?Client $requester = null): string
+    /** $preview renders even when incomplete (watermarked PREVIEW) and leaves the PDF unlocked. */
+    public function render(Business $b, ?Client $requester = null, bool $preview = false): string
     {
-        if ($missing = $this->missing($b)) throw new DomainException('Complete the W-9 settings first: '.implode(', ', $missing).'.');
+        $missing = $this->missing($b);
+        if ($missing && ! $preview) throw new DomainException('Complete the W-9 settings first: '.implode(', ', $missing).'.');
         $s = $this->settings($b);
         $signature = null;
         if ($s['signer_membership_id']) {
@@ -100,10 +122,10 @@ class W9Service
         }
 
         return $this->pdf->render('pdf.w9', [
-            's' => $s, 'tin' => $this->tin($b), 'signature' => $signature,
-            'date' => $b->localToday()->format('m/d/Y'),
+            's' => $s, 'box' => self::formBox((string) $s['classification']), 'tin' => $this->tin($b), 'signature' => $signature,
+            'date' => $b->localToday()->format('m/d/Y'), 'preview' => $preview && $missing,
             'requester' => $requester ? array_values(array_filter(array_merge([$requester->legal_name ?: $requester->display_name], $requester->billingAddressLines()))) : [],
-        ], true);
+        ], ! $preview);
     }
 
     /**

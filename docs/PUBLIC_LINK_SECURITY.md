@@ -18,7 +18,7 @@
 GET requests never sign, pay, consume one-time codes or change financial state. Link scanners (Safe Links, Proofpoint…) only create access events flagged `probable_automation` by user-agent heuristics; staff see "possibly automated". Emails include a first-party open pixel and tracked buttons (see INTEGRATIONS.md); tracking tokens are separate from access tokens, stored hashed, and an unknown pixel token gets the same response as a valid one.
 
 ## Headers & limits
-Public responses: `Cache-Control: no-store, private`, `Referrer-Policy: no-referrer`, `X-Robots-Tag: noindex, nofollow, noarchive`, CSP `default-src 'self'` with no external assets, `X-Frame-Options: DENY`. Rate limits: token exchange 20/min/IP, page views 30/min/IP, writes (payment reports, OTP, sign) 10/min and 60/h per IP; payment reports also capped at 5 per invoice per day. All POSTs are CSRF-protected. Uploads are MIME-sniffed (PDF/PNG/JPEG only), size-limited and stored privately.
+Public responses: `Cache-Control: no-store, private`, `Referrer-Policy: no-referrer`, `X-Robots-Tag: noindex, nofollow, noarchive`, CSP `default-src 'self'` with no external assets, `X-Frame-Options: SAMEORIGIN` (plus CSP `frame-ancestors 'self'`). Rate limits: token exchange 20/min/IP, page views 30/min/IP, writes (payment reports, OTP, sign) 10/min and 60/h per IP; payment reports also capped at 5 per invoice per day. All POSTs are CSRF-protected. Uploads are MIME-sniffed (PDF/PNG/JPEG only), size-limited and stored privately.
 
 ## Logs
 The vhost logs `%U` (path without query string) and rewrites token-bearing paths (`/i/…`, `/c/…`, `/invite/…`) to `[redacted-link]`. The app never logs raw tokens.

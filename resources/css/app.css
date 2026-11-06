@@ -17,6 +17,7 @@
   a { @apply text-brand-700 hover:text-brand-800; }
   :focus-visible { @apply outline outline-2 outline-offset-2 outline-brand-600; }
   table { @apply w-full text-sm; }
+  [hidden] { display: none !important; }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 }
 

@@ -556,4 +556,18 @@
       }
     }, true);
   });
+
+  // Conditional fields: <select data-show-source> toggles [data-show-for="a b"] blocks in the same form.
+  {
+    $$('[data-show-source]').forEach((src) => {
+      const scope = src.closest('form') || document;
+      const apply = () => $$('[data-show-for]', scope).forEach((el) => {
+        const on = el.dataset.showFor.split(' ').includes(src.value);
+        el.hidden = !on;
+        $$('input, select, textarea', el).forEach((i) => { i.disabled = !on; });
+      });
+      src.addEventListener('change', apply);
+      apply();
+    });
+  }
 })();

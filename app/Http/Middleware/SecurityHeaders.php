@@ -24,7 +24,7 @@ class SecurityHeaders
         $h = $response->headers;
         $h->set('X-Correlation-Id', $ctx->correlationId);
         $h->set('X-Content-Type-Options', 'nosniff');
-        $h->set('X-Frame-Options', 'DENY');
+        $h->set('X-Frame-Options', 'SAMEORIGIN');
         $h->set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
         if (! $h->has('Referrer-Policy')) $h->set('Referrer-Policy', 'same-origin');
         if (! $h->has('Content-Security-Policy') && ! str_starts_with((string) $h->get('Content-Type'), 'application/pdf')) {

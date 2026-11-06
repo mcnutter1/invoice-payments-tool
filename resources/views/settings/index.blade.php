@@ -57,26 +57,29 @@
     <div class="card-head"><h2>Form W-9 (your taxpayer information)</h2>
         <span class="flex items-center gap-2">
             <span class="chip {{ $w9Missing ? 'chip-amber' : 'chip-green' }}">{{ $w9Missing ? 'Incomplete' : 'Ready to send' }}</span>
-            @if (! $w9Missing && $canManage)<a class="btn btn-sm" href="{{ $bu }}/settings/w9/preview" target="_blank" rel="noopener">Preview PDF</a>@endif
+            @if ($canManage)<a class="btn btn-sm" href="{{ $bu }}/settings/w9/preview" target="_blank" rel="noopener">Open preview</a>@endif
         </span></div>
     <fieldset class="card-body grid gap-4 sm:grid-cols-2" {{ $dis }}>
         @if ($w9Missing)<div class="alert alert-warn sm:col-span-2">Still needed: {{ implode(', ', $w9Missing) }}.</div>@endif
         <p class="hint sm:col-span-2">These details fill in IRS Form W-9 (Rev. March 2024) automatically whenever you send it to a client or a client requests it from an invoice. Defaults come from your business profile.</p>
         <div><label class="label" for="w9-name">1 · Name of entity/individual</label><input class="input" id="w9-name" name="name" value="{{ old('name', $w9['name']) }}" required><p class="hint">For a sole proprietor or disregarded entity, the owner’s name.</p></div>
-        <div><label class="label" for="w9-bn">2 · Business name / disregarded entity (if different)</label><input class="input" id="w9-bn" name="business_name" value="{{ old('business_name', $w9['business_name']) }}"></div>
-        <div><label class="label" for="w9-class">3a · Federal tax classification</label>
-            <select class="input" id="w9-class" name="classification" required><option value="">Choose…</option>
+        <div><label class="label" for="w9-bn">2 · Business name / disregarded entity (if different)</label><input class="input" id="w9-bn" name="business_name" value="{{ old('business_name', $w9['business_name']) }}">
+            @error('business_name')<p class="mt-1 text-xs text-red-700">{{ $message }}</p>@enderror</div>
+        <div class="sm:col-span-2"><label class="label" for="w9-class">3a · What kind of business is this for federal tax purposes?</label>
+            <select class="input" id="w9-class" name="classification" required data-show-source><option value="">Choose…</option>
                 @foreach (\App\Services\Tax\W9Service::CLASSIFICATIONS as $k => $v)<option value="{{ $k }}" @selected(old('classification', $w9['classification']) === $k)>{{ $v }}</option>@endforeach
-            </select></div>
-        <div class="grid grid-cols-2 gap-2">
-            <div><label class="label" for="w9-llc">LLC classification</label><select class="input" id="w9-llc" name="llc_code"><option value="">—</option>@foreach (['C' => 'C — C corporation', 'S' => 'S — S corporation', 'P' => 'P — Partnership'] as $k => $v)<option value="{{ $k }}" @selected(old('llc_code', $w9['llc_code']) === $k)>{{ $v }}</option>@endforeach</select></div>
-            <div><label class="label" for="w9-other">“Other” description</label><input class="input" id="w9-other" name="other_text" value="{{ old('other_text', $w9['other_text']) }}"></div>
-        </div>
-        <label class="flex items-start gap-2 text-sm sm:col-span-2"><input type="hidden" name="foreign_partners" value="0"><input class="check mt-0.5" type="checkbox" name="foreign_partners" value="1" @checked($w9['foreign_partners'])> 3b · Has foreign partners, owners or beneficiaries (only for partnerships, trusts/estates, or LLCs taxed as partnerships)</label>
-        <div class="grid grid-cols-2 gap-2">
-            <div><label class="label" for="w9-exempt">4 · Exempt payee code</label><input class="input" id="w9-exempt" name="exempt_payee_code" value="{{ old('exempt_payee_code', $w9['exempt_payee_code']) }}" placeholder="Usually blank"></div>
-            <div><label class="label" for="w9-fatca">FATCA exemption code</label><input class="input" id="w9-fatca" name="fatca_code" value="{{ old('fatca_code', $w9['fatca_code']) }}" placeholder="Usually blank"></div>
-        </div>
+            </select>
+            <p class="hint">Not sure? A single-owner LLC that never filed an election with the IRS is a <em>disregarded entity</em>. A multi-member LLC is a partnership unless it elected to be taxed as a corporation.</p></div>
+        <div class="alert alert-info sm:col-span-2" data-show-for="disregarded">For a single-member LLC, line 1 is <strong>the owner’s name</strong> and line 2 is <strong>the LLC’s name</strong>. The form checks “Individual/sole proprietor”, and the TIN is the owner’s SSN, or the LLC’s EIN if you prefer to use it. If the LLC is owned by a corporation, choose the owner’s classification instead.</div>
+        <div data-show-for="llc"><label class="label" for="w9-llc">How is the LLC taxed?</label><select class="input" id="w9-llc" name="llc_code"><option value="">Choose…</option>@foreach (['C' => 'C — C corporation (filed Form 8832)', 'S' => 'S — S corporation (filed Form 2553)', 'P' => 'P — Partnership (multi-member, default)'] as $k => $v)<option value="{{ $k }}" @selected(old('llc_code', $w9['llc_code']) === $k)>{{ $v }}</option>@endforeach</select>
+            @error('llc_code')<p class="mt-1 text-xs text-red-700">{{ $message }}</p>@enderror</div>
+        <div data-show-for="other"><label class="label" for="w9-other">Describe the classification</label><input class="input" id="w9-other" name="other_text" value="{{ old('other_text', $w9['other_text']) }}" placeholder="e.g. Nonprofit corporation">
+            @error('other_text')<p class="mt-1 text-xs text-red-700">{{ $message }}</p>@enderror</div>
+        <div data-show-for="partnership trust llc" class="sm:col-span-2"><label class="flex items-start gap-2 text-sm"><input type="hidden" name="foreign_partners" value="0"><input class="check mt-0.5" type="checkbox" name="foreign_partners" value="1" @checked($w9['foreign_partners'])> 3b · We have foreign partners, owners or beneficiaries (only matters when giving this form to a partnership, trust or estate you have an ownership interest in)</label></div>
+        <div data-show-for="c_corp s_corp partnership trust llc other" class="sm:col-span-2"><div class="grid grid-cols-2 gap-2">
+            <div><label class="label" for="w9-exempt">4 · Exempt payee code</label><input class="input" id="w9-exempt" name="exempt_payee_code" value="{{ old('exempt_payee_code', $w9['exempt_payee_code']) }}" placeholder="Usually blank"><p class="hint">Corporations commonly use 5 only for specific payment types; most businesses leave this blank.</p></div>
+            <div><label class="label" for="w9-fatca">FATCA exemption code</label><input class="input" id="w9-fatca" name="fatca_code" value="{{ old('fatca_code', $w9['fatca_code']) }}" placeholder="Usually blank"><p class="hint">Only for accounts held outside the U.S.</p></div>
+        </div></div>
         <div><label class="label" for="w9-acct">7 · Account number(s) (optional)</label><input class="input" id="w9-acct" name="account_numbers" value="{{ old('account_numbers', $w9['account_numbers']) }}"></div>
         <div><label class="label" for="w9-addr">5 · Address (number, street, suite)</label><input class="input" id="w9-addr" name="address" value="{{ old('address', $w9['address']) }}" required></div>
         <div><label class="label" for="w9-csz">6 · City, state, and ZIP code</label><input class="input" id="w9-csz" name="city_state_zip" value="{{ old('city_state_zip', $w9['city_state_zip']) }}" required></div>
@@ -98,6 +101,12 @@
         </div>
         <div><button class="btn btn-primary">Save W-9 details</button></div>
     </fieldset>
+    @if ($canManage)
+    <details class="border-t border-slate-100" @if(session('status') && str_contains((string) session('status'), 'W-9')) open @endif>
+        <summary class="card-head cursor-pointer list-none"><h3>Preview</h3><span class="text-xs text-slate-500">Shows the saved details{{ $w9Missing ? ' — marked PREVIEW until complete' : '' }}</span></summary>
+        <div class="card-body pt-0"><iframe src="{{ $bu }}/settings/w9/preview" title="W-9 preview" loading="lazy" class="h-[52rem] w-full rounded border border-slate-200 bg-white"></iframe></div>
+    </details>
+    @endif
 </form>
 
 <form id="branding" method="post" action="{{ $bu }}/settings/branding" enctype="multipart/form-data" class="card mt-4">@csrf

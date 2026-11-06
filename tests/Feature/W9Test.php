@@ -38,19 +38,48 @@ class W9Test extends TestCase
 
     public function test_settings_validate_and_generate_a_locked_w9_pdf(): void
     {
-        [$owner, $biz] = $this->setupW9();
+        [$owner, $biz, $client] = $this->setupW9();
         $w9 = app(W9Service::class);
         $this->assertSame([], $w9->missing($biz));
         $this->assertSame('123456789', $w9->tin($biz));
         $this->assertStringNotContainsString('123456789', (string) $biz->w9_tin_encrypted);
 
-        $pdf = $this->signIn($owner)->get("/b/{$biz->ulid}/settings/w9/preview")->assertOk()->assertHeader('Content-Type', 'application/pdf')->getContent();
+        $this->signIn($owner)->get("/b/{$biz->ulid}/settings/w9/preview")->assertOk()->assertHeader('Content-Type', 'application/pdf');
+        $pdf = $this->signIn($owner)->get("/b/{$biz->ulid}/clients/{$client->id}/w9")->assertOk()->getContent();
         $this->assertStringStartsWith('%PDF', $pdf);
-        $this->assertStringContainsString('/Encrypt', $pdf); // opens and prints, but can't be edited
+        $this->assertStringContainsString('/Encrypt', $pdf); // copies for clients open and print, but can't be edited
 
         $this->signIn($owner)->post("/b/{$biz->ulid}/settings/w9", ['name' => 'X', 'classification' => 'llc', 'address' => 'a', 'city_state_zip' => 'b',
             'tin_type' => 'ein', 'tin' => '123', 'signer_name' => 'R', 'link_ttl_days' => 14, 'max_downloads' => 2])->assertSessionHasErrors(['llc_code']);
         $this->signIn($owner)->get("/b/{$biz->ulid}/settings")->assertOk()->assertSee('Ready to send')->assertSee('•••••6789');
+    }
+
+    public function test_classifications_beyond_llc_and_preview_while_incomplete(): void
+    {
+        $owner = $this->makeUser();
+        $biz = $this->makeBusiness($owner);
+        $biz->update(['entity_type' => 'llc']);
+        $w9 = app(W9Service::class);
+        // An LLC must say how it's taxed, so nothing is assumed.
+        $this->assertContains('Federal tax classification (line 3a)', $w9->missing($biz->fresh()));
+        $this->signIn($owner)->get("/b/{$biz->ulid}/settings/w9/preview")->assertOk()->assertHeader('Content-Type', 'application/pdf');
+        $this->signIn($owner)->get("/b/{$biz->ulid}/settings")->assertOk()->assertSee('data-show-for="llc"', false)->assertSee('W-9 preview');
+
+        $base = ['name' => 'Pat Owner', 'address' => '1 Main St', 'city_state_zip' => 'Austin, TX 78701', 'tin_type' => 'ssn', 'tin' => '123-45-6789',
+            'signer_name' => 'Pat Owner', 'link_ttl_days' => 14, 'max_downloads' => 3];
+        // Single-member LLC: needs the LLC name on line 2; codes that don't apply are cleared.
+        $this->signIn($owner)->post("/b/{$biz->ulid}/settings/w9", $base + ['classification' => 'disregarded'])->assertSessionHasErrors('business_name');
+        $this->signIn($owner)->post("/b/{$biz->ulid}/settings/w9", $base + ['classification' => 'disregarded', 'business_name' => 'Pat Studio LLC',
+            'llc_code' => 'P', 'exempt_payee_code' => '5', 'foreign_partners' => 1])->assertSessionHas('status');
+        $s = $w9->settings($biz->fresh());
+        $this->assertSame(['', '', false], [$s['llc_code'], $s['exempt_payee_code'], $s['foreign_partners']]);
+        $this->assertSame('individual', W9Service::formBox($s['classification']));
+        $this->assertSame([], $w9->missing($biz->fresh()));
+
+        // A C corporation that isn't an LLC at all.
+        $this->signIn($owner)->post("/b/{$biz->ulid}/settings/w9", array_merge($base, ['name' => 'Acme Inc', 'tin_type' => 'ein', 'tin' => '12-3456789', 'classification' => 'c_corp', 'exempt_payee_code' => '5']))->assertSessionHas('status');
+        $this->assertSame(['c_corp', '5'], [$w9->settings($biz->fresh())['classification'], $w9->settings($biz->fresh())['exempt_payee_code']]);
+        $this->assertStringStartsWith('%PDF', $w9->render($biz->fresh()));
     }
 
     public function test_staff_send_uses_expiring_limited_links_behind_a_landing_page(): void

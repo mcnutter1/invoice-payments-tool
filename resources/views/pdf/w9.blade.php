@@ -1,6 +1,6 @@
 @php
     $box = fn (bool $on) => '<span class="cb">'.($on ? 'X' : '&nbsp;').'</span>';
-    $c = $s['classification'];
+    $c = $box ?? \App\Services\Tax\W9Service::formBox((string) $s['classification']);
     $digits = str_split((string) $tin);
     $ssn = $s['tin_type'] === 'ssn';
     $cell = fn ($d) => '<td class="d">'.e($d ?? '').'</td>';
@@ -41,6 +41,7 @@
     .gen p { margin: 3px 0; text-align: justify; }
     .gen h3 { font-size: 9px; margin: 6px 0 2px; }
 </style></head><body>
+@if (! empty($preview))<div style="position: fixed; top: 300px; left: 90px; font-size: 96px; font-weight: bold; color: rgba(220,38,38,0.13); transform: rotate(-30deg);">PREVIEW</div>@endif
 
 <table class="hdr"><tr>
     <td style="width: 95px; border-right: 1px solid #000; padding-right: 4px;" class="formno">Form <span class="big">W-9</span><br>(Rev. March 2024)<br><span style="font-size:6.5px">Department of the Treasury<br>Internal Revenue Service</span></td>
