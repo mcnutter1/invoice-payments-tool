@@ -122,7 +122,7 @@ class W9Service
         }
 
         return $this->pdf->render('pdf.w9', [
-            's' => $s, 'box' => self::formBox((string) $s['classification']), 'tin' => $this->tin($b), 'signature' => $signature,
+            's' => $s, 'checked' => self::formBox((string) $s['classification']), 'tin' => $this->tin($b), 'signature' => $signature,
             'date' => $b->localToday()->format('m/d/Y'), 'preview' => $preview && $missing,
             'requester' => $requester ? array_values(array_filter(array_merge([$requester->legal_name ?: $requester->display_name], $requester->billingAddressLines()))) : [],
         ], ! $preview);

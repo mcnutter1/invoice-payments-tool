@@ -1,6 +1,6 @@
 @php
     $box = fn (bool $on) => '<span class="cb">'.($on ? 'X' : '&nbsp;').'</span>';
-    $c = $box ?? \App\Services\Tax\W9Service::formBox((string) $s['classification']);
+    $c = $checked ?? \App\Services\Tax\W9Service::formBox((string) $s['classification']);
     $digits = str_split((string) $tin);
     $ssn = $s['tin_type'] === 'ssn';
     $cell = fn ($d) => '<td class="d">'.e($d ?? '').'</td>';

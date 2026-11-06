@@ -82,6 +82,20 @@ class W9Test extends TestCase
         $this->assertStringStartsWith('%PDF', $w9->render($biz->fresh()));
     }
 
+    public function test_line_3a_box_is_checked_for_each_classification(): void
+    {
+        $base = ['name' => 'X', 'business_name' => '', 'llc_code' => '', 'other_text' => 'Nonprofit', 'foreign_partners' => false, 'exempt_payee_code' => '',
+            'fatca_code' => '', 'address' => 'a', 'city_state_zip' => 'b', 'account_numbers' => '', 'tin_type' => 'ein', 'backup_withholding' => false, 'signer_name' => 'R'];
+        $labels = ['individual' => 'Individual/sole proprietor', 'disregarded' => 'Individual/sole proprietor', 'c_corp' => 'C corporation',
+            's_corp' => 'S corporation', 'partnership' => 'Partnership', 'trust' => 'Trust/estate', 'llc' => 'LLC. Enter', 'other' => 'Other (see'];
+        foreach ($labels as $class => $label) {
+            $html = view('pdf.w9', ['s' => ['classification' => $class, 'llc_code' => $class === 'llc' ? 'S' : ''] + $base,
+                'checked' => W9Service::formBox($class), 'tin' => '123456789', 'signature' => null, 'date' => '01/01/2026', 'requester' => []])->render();
+            $this->assertSame(1, substr_count($html, '<span class="cb">X</span>'), $class);
+            $this->assertStringContainsString('<span class="cb">X</span>'.$label, $html, $class);
+        }
+    }
+
     public function test_staff_send_uses_expiring_limited_links_behind_a_landing_page(): void
     {
         [$owner, $biz, $client] = $this->setupW9();
