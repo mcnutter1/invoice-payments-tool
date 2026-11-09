@@ -9,3 +9,5 @@ Schedule::command('finance:maintenance')->hourly()->withoutOverlapping(30);
 Schedule::command('finance:reminders')->dailyAt(config('finance.reminders.run_at', '14:00'))->withoutOverlapping(30);
 Schedule::command('finance:backups')->hourlyAt(5)->withoutOverlapping(55);
 Schedule::command('finance:backups-weekly')->weeklyOn(1, '15:00')->withoutOverlapping(120);
+// The IRS usually announces next year's rate in December; check weekly so new rates (and mid-year changes) are picked up.
+Schedule::command('finance:mileage-rates')->weeklyOn(2, '13:00')->withoutOverlapping(30);

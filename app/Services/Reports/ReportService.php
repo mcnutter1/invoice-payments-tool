@@ -30,6 +30,8 @@ class ReportService
         'sales-by-item' => ['Sales by product/service', 'reports.pnl.view'],
         'expenses-by-category' => ['Expenses by category', 'reports.pnl.view'],
         'expenses-by-vendor' => ['Expenses by vendor', 'reports.pnl.view'],
+        'expenses-by-client' => ['Expenses by client', 'reports.pnl.view'],
+        'expenses-by-project' => ['Expenses by project', 'reports.pnl.view'],
         'sales-tax' => ['Sales tax liability', 'reports.pnl.view'],
         'recurring-forecast' => ['Recurring billing forecast', 'reports.ar.view'],
         'contract-values' => ['Contract values', 'reports.ar.view'],
@@ -280,6 +282,31 @@ class ReportService
         }
 
         return ['rows' => $rows, 'total' => array_sum(array_column($rows, 'amount'))];
+    }
+
+    /**
+     * Recorded expenses (non-void, by expense date) grouped by client or project. Uncategorised spend is reported
+     * as “General business” so the rows always add up to total operating expenses entered.
+     */
+    public function expensesByAssignment(Business $b, string $from, string $to, string $by): array
+    {
+        $col = $by === 'project' ? 'project_id' : 'client_id';
+        $raw = \App\Models\ExpenseLine::query()->join('expenses', 'expenses.id', '=', 'expense_lines.expense_id')
+            ->join('chart_accounts', 'chart_accounts.id', '=', 'expense_lines.account_id')
+            ->where('expenses.business_id', $b->id)->whereNull('expenses.voided_at')->where('chart_accounts.type', 'expense')
+            ->whereBetween('expenses.expense_date', [$from, $to])
+            ->selectRaw("expenses.{$col} as gid, COUNT(DISTINCT expenses.id) as n, SUM(expense_lines.amount_cents) as amt, SUM(CASE WHEN expense_lines.billable = 1 THEN expense_lines.amount_cents ELSE 0 END) as billable")
+            ->groupBy("expenses.{$col}")->get();
+        $names = $by === 'project'
+            ? \App\Models\Project::with('client')->where('business_id', $b->id)->whereIn('id', $raw->pluck('gid')->filter())->get()->keyBy('id')
+            : \App\Models\Client::where('business_id', $b->id)->whereIn('id', $raw->pluck('gid')->filter())->get()->keyBy('id');
+        $rows = $raw->map(fn ($r) => [
+            'label' => $r->gid ? ($by === 'project' ? $names->get($r->gid)?->label() : $names->get($r->gid)?->display_name) ?? '#'.$r->gid : ($by === 'project' ? 'No project' : 'General business (no client)'),
+            'id' => $r->gid ? (int) $r->gid : null, 'count' => (int) $r->n, 'amount' => (int) $r->amt, 'billable' => (int) $r->billable,
+        ])->sortBy(fn ($r) => [$r['id'] === null ? 1 : 0, -$r['amount']])->values()->all();
+
+        return ['rows' => $rows, 'by' => $by, 'total' => array_sum(array_column($rows, 'amount')),
+            'note' => 'Recorded expenses and mileage by expense date, excluding voided entries and capitalised asset purchases.'];
     }
 
     public function salesTax(Business $b, string $from, string $to): array

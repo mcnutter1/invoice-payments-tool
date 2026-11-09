@@ -109,6 +109,12 @@ class ClientController extends Controller
             'balance' => (int) Invoice::where('business_id', $b->id)->where('client_id', $id)->where('status', 'issued')->sum('balance_cents'),
             'credit' => $ctx->can('payments.view') ? -(int) JournalLine::where('business_id', $b->id)->where('client_id', $id)->where('account_id', $b->account('customer_advances')->id)->sum(\Illuminate\Support\Facades\DB::raw('debit_cents - credit_cents')) : 0,
             'activity' => \App\Models\AuditEvent::where('business_id', $b->id)->where('object_type', 'Client')->where('object_id', $id)->latest('id')->limit(20)->get(),
+            'expenses' => $ctx->can('expenses.view') ? [
+                'recent' => \App\Models\Expense::with('vendor', 'project')->where('business_id', $b->id)->where('client_id', $id)->whereNull('voided_at')->latest('expense_date')->limit(8)->get(),
+                'total' => (int) \App\Models\Expense::where('business_id', $b->id)->where('client_id', $id)->whereNull('voided_at')->sum('total_cents'),
+                'ytd' => (int) \App\Models\Expense::where('business_id', $b->id)->where('client_id', $id)->whereNull('voided_at')->whereDate('expense_date', '>=', $b->localToday()->startOfYear())->sum('total_cents'),
+                'projects' => \App\Models\Project::where('business_id', $b->id)->where('client_id', $id)->withSum(['expenses' => fn ($q) => $q->whereNull('voided_at')], 'total_cents')->orderByDesc('start_date')->get(),
+            ] : null,
         ]);
     }
 

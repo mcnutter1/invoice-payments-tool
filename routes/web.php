@@ -65,6 +65,10 @@ Route::middleware('central')->group(function () {
     Route::post('/platform/backups/businesses', [C\PlatformBackupController::class, 'saveBusinesses'])->middleware('central:fresh');
     Route::post('/platform/backups/businesses/{ulid}/run', [C\PlatformBackupController::class, 'run'])->middleware('throttle:sensitive');
     Route::post('/platform/role-mappings', [C\PlatformController::class, 'storeMapping'])->middleware('central:fresh');
+    Route::get('/platform/mileage-rates', [C\PlatformMileageController::class, 'index']);
+    Route::post('/platform/mileage-rates', [C\PlatformMileageController::class, 'store']);
+    Route::post('/platform/mileage-rates/sync', [C\PlatformMileageController::class, 'sync'])->middleware('throttle:sensitive');
+    Route::post('/platform/mileage-rates/{id}/delete', [C\PlatformMileageController::class, 'destroy'])->whereNumber('id');
     Route::post('/platform/role-mappings/{id}/delete', [C\PlatformController::class, 'deleteMapping'])->middleware('central:fresh');
 
     Route::prefix('/b/{business}')->middleware('business')->group(function () {
@@ -173,6 +177,28 @@ Route::middleware('central')->group(function () {
             Route::post('/expenses/{id}/void', [C\ExpenseController::class, 'void']);
             Route::post('/expenses/{id}/pay', [C\ExpenseController::class, 'pay']);
             Route::post('/expenses/{id}/receipt', [C\ExpenseController::class, 'attachReceipt']);
+            Route::get('/expenses/{id}/edit', [C\ExpenseController::class, 'edit'])->whereNumber('id');
+            Route::post('/expenses/{id}', [C\ExpenseController::class, 'update'])->whereNumber('id');
+            Route::get('/expenses/import', [C\ExpenseImportController::class, 'index']);
+            Route::post('/expenses/import', [C\ExpenseImportController::class, 'upload'])->middleware('throttle:sensitive');
+            Route::get('/expenses/import/{ulid}', [C\ExpenseImportController::class, 'review']);
+            Route::post('/expenses/import/{ulid}', [C\ExpenseImportController::class, 'commit']);
+            Route::post('/expenses/imports/{id}/undo', [C\ExpenseImportController::class, 'undo'])->whereNumber('id');
+            Route::get('/projects/new', [C\ProjectController::class, 'create']);
+            Route::post('/projects', [C\ProjectController::class, 'store']);
+            Route::get('/projects/{id}/edit', [C\ProjectController::class, 'edit'])->whereNumber('id');
+            Route::post('/projects/{id}', [C\ProjectController::class, 'update'])->whereNumber('id');
+            Route::get('/mileage/new', [C\MileageController::class, 'create']);
+            Route::post('/mileage', [C\MileageController::class, 'store']);
+            Route::post('/mileage/reprice', [C\MileageController::class, 'reprice']);
+            Route::get('/mileage/{id}/edit', [C\MileageController::class, 'edit'])->whereNumber('id');
+            Route::post('/mileage/{id}', [C\MileageController::class, 'update'])->whereNumber('id');
+            Route::post('/mileage/{id}/delete', [C\MileageController::class, 'destroy'])->whereNumber('id');
+        });
+        Route::middleware('perm:expenses.view')->group(function () {
+            Route::get('/projects', [C\ProjectController::class, 'index']);
+            Route::get('/projects/{id}', [C\ProjectController::class, 'show'])->whereNumber('id');
+            Route::get('/mileage', [C\MileageController::class, 'index']);
         });
         Route::post('/expenses/{id}/bill-client', [C\ExpenseController::class, 'billToClient'])->middleware('perm:invoices.manage');
 

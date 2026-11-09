@@ -1,12 +1,14 @@
 @extends('layouts.app')
 @section('title', ($expense->kind === 'bill' ? 'Bill' : 'Expense'))
 @section('content')
+@include('expenses._tabs', ['active' => $expense->source === 'mileage' ? 'mileage' : 'expenses'])
 <div class="flex flex-wrap items-start justify-between gap-3">
     <div>
         <h1>{{ $expense->kind === 'bill' ? 'Bill' : 'Expense' }} · @money($expense->total_cents) @include('partials.status', ['s' => $expense->status])</h1>
-        <p class="text-sm text-slate-500">{{ $expense->vendor?->name ?? 'No vendor' }} · {{ $expense->expense_date->format('M j, Y') }} @if($expense->reference) · {{ $expense->reference }} @endif</p>
+        <p class="text-sm text-slate-500">{{ $expense->vendor?->name ?? 'No vendor' }} · {{ $expense->expense_date->format('M j, Y') }} @if($expense->reference) · {{ $expense->reference }} @endif @include('expenses._chips', ['e' => $expense, 'noDup' => true])</p>
     </div>
     <div class="flex gap-2">
+        @if ($ctx->can('expenses.manage') && ! $expense->voided_at)<a class="btn" href="{{ $bu }}/{{ $expense->mileageTrip ? 'mileage/'.$expense->mileageTrip->id : 'expenses/'.$expense->id }}/edit">Edit</a>@endif
         @if ($expense->journal_entry_id && $ctx->can('journals.view'))<a class="btn" href="{{ $bu }}/journals/{{ $expense->journal_entry_id }}">Ledger entry</a>@endif
         @if ($expense->receipt_document_id)<a class="btn" href="{{ $bu }}/expenses/{{ $expense->id }}/receipt" target="_blank" rel="noopener">View receipt</a>@endif
     </div>
@@ -41,10 +43,30 @@
         <div class="card card-body text-sm"><dl class="dl">
             @if ($expense->paymentAccount)<dt>Paid from</dt><dd>{{ $expense->paymentAccount->name }}</dd>@endif
             @if ($expense->due_date)<dt>Due</dt><dd>{{ $expense->due_date->format('M j, Y') }}</dd>@endif
-            @if ($expense->client)<dt>Client</dt><dd><a href="{{ $bu }}/clients/{{ $expense->client_id }}">{{ $expense->client->display_name }}</a></dd>@endif
+            @if ($expense->client)<dt>Client</dt><dd><a href="{{ $bu }}/clients/{{ $expense->client_id }}">{{ $expense->client->display_name }}</a></dd>@else<dt>Client</dt><dd class="text-slate-500">General business</dd>@endif
+            @if ($expense->project)<dt>Project</dt><dd><a href="{{ $bu }}/projects/{{ $expense->project_id }}">{{ $expense->project->name }}</a></dd>@endif
             @if ($expense->description)<dt>Description</dt><dd>{{ $expense->description }}</dd>@endif
             @if ($expense->notes)<dt>Notes</dt><dd>{{ $expense->notes }}</dd>@endif
+            @if ($expense->edited_at)<dt>Last edited</dt><dd>{{ $expense->edited_at->timezone($biz->timezone)->format('M j, Y g:i A') }}@if($expense->revision) · reposted {{ $expense->revision }}×@endif</dd>@endif
         </dl></div>
+        @if ($expense->mileageTrip)
+            @php($t = $expense->mileageTrip)
+            <div class="card card-body text-sm"><h2 class="mb-2">Mileage</h2><dl class="dl">
+                <dt>Route</dt><dd>{{ $t->from_location ?: '—' }} → {{ $t->to_location ?: '—' }}{{ $t->round_trip ? ' (round trip)' : '' }}</dd>
+                <dt>Miles</dt><dd>{{ $t->totalMiles() }}</dd>
+                <dt>IRS rate</dt><dd>{{ rtrim(rtrim(number_format($t->rate_millis / 10, 1), '0'), '.') }}¢ / mile</dd>
+                <dt>Purpose</dt><dd>{{ $t->purpose }}</dd>
+                @if ($t->vehicle)<dt>Vehicle</dt><dd>{{ $t->vehicle }}</dd>@endif
+            </dl></div>
+        @endif
+        @if ($expense->source === 'import' && $expense->import_meta)
+            <div class="card card-body text-sm"><h2 class="mb-2">Imported transaction</h2><dl class="dl">
+                @foreach (['merchant' => 'Merchant', 'statement' => 'Statement text', 'category' => 'Source category', 'account' => 'Source account', 'tags' => 'Tags', 'entity' => 'Business entity', 'file' => 'File'] as $k => $label)
+                    @if (!empty($expense->import_meta[$k]))<dt>{{ $label }}</dt><dd>{{ $expense->import_meta[$k] }}</dd>@endif
+                @endforeach
+                @if ($expense->importBatch)<dt>Batch</dt><dd><a href="{{ $bu }}/expenses?batch={{ $expense->import_batch_id }}">{{ $expense->importBatch->created_at->timezone($biz->timezone)->format('M j, Y') }} · {{ $expense->importBatch->imported_count }} rows</a></dd>@endif
+            </dl></div>
+        @endif
         @if ($ctx->can('expenses.manage') && ! $expense->voided_at)
             <form method="post" action="{{ $bu }}/expenses/{{ $expense->id }}/receipt" enctype="multipart/form-data" class="card card-body space-y-2">@csrf
                 <label class="label" for="receipt">{{ $expense->receipt_document_id ? 'Replace receipt' : 'Attach receipt' }}</label>

@@ -18,6 +18,8 @@
                 'sales-by-item' => 'Revenue by product/service',
                 'expenses-by-category' => 'Spending by account',
                 'expenses-by-vendor' => 'Spending by vendor',
+                'expenses-by-client' => 'Client-related vs general business spending',
+                'expenses-by-project' => 'Spending per project or trip',
                 'sales-tax' => 'Liability and collected-tax schedule',
                 'recurring-forecast' => 'Upcoming scheduled billing (forecast)',
                 'contract-values' => 'Committed vs invoiced vs collected',

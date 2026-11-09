@@ -46,6 +46,8 @@ class ReportController extends Controller
             'sales-by-item' => $this->reports->salesByItem($b, $from, $to),
             'expenses-by-category' => $this->reports->expensesBy($b, $from, $to, 'category', $basis),
             'expenses-by-vendor' => $this->reports->expensesBy($b, $from, $to, 'vendor'),
+            'expenses-by-client' => $this->reports->expensesByAssignment($b, $from, $to, 'client'),
+            'expenses-by-project' => $this->reports->expensesByAssignment($b, $from, $to, 'project'),
             'sales-tax' => $this->reports->salesTax($b, $from, $to),
             'recurring-forecast' => $this->reports->recurringForecast($b, (int) $request->query('months', 6)),
             'contract-values' => $this->reports->contractValues($b),

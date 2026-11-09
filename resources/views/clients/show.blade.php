@@ -99,6 +99,28 @@
             @empty <tr><td colspan="4" class="text-slate-500">No payments.</td></tr> @endforelse
             </tbody></table></div>
         @endif
+        @if ($expenses && ($expenses['total'] > 0 || $expenses['projects']->isNotEmpty() || $ctx->can('expenses.manage')))
+        <div class="card overflow-x-auto">
+            <div class="card-head"><h2>Expenses</h2>
+                <span class="flex items-center gap-3 text-sm"><span>YTD <strong>@money($expenses['ytd'])</strong> · All time <strong>@money($expenses['total'])</strong></span>
+                @if ($ctx->can('expenses.manage'))<a class="btn btn-sm" href="{{ $bu }}/projects/new?client={{ $client->id }}">+ Project</a><a class="btn btn-sm" href="{{ $bu }}/expenses/new?client={{ $client->id }}">+ Expense</a>@endif</span>
+            </div>
+            @if ($expenses['projects']->isNotEmpty())
+                <div class="card-body flex flex-wrap gap-2 pb-0">
+                    @foreach ($expenses['projects'] as $p)<a href="{{ $bu }}/projects/{{ $p->id }}" class="chip {{ $p->status === 'open' ? 'chip-blue' : 'chip-gray' }}">{{ $p->name }} · @money((int) $p->expenses_sum_total_cents)</a>@endforeach
+                </div>
+            @endif
+            <table class="tbl"><thead><tr><th>Date</th><th>Vendor</th><th>Description</th><th class="num">Amount</th></tr></thead><tbody>
+            @forelse ($expenses['recent'] as $e)
+                <tr><td><a href="{{ $bu }}/expenses/{{ $e->id }}">{{ $e->expense_date->format('M j, Y') }}</a></td><td>{{ $e->vendor?->name ?? '—' }}</td>
+                    <td>{{ $e->description }} @if($e->project)<span class="chip chip-blue">{{ $e->project->name }}</span>@endif</td><td class="num">@money($e->total_cents)</td></tr>
+            @empty
+                <tr><td colspan="4" class="text-slate-500">No expenses linked to this client.</td></tr>
+            @endforelse
+            </tbody></table>
+            @if ($expenses['recent']->count() >= 8)<div class="card-body pt-2 text-sm"><a href="{{ $bu }}/expenses?client={{ $client->id }}">All expenses for this client →</a></div>@endif
+        </div>
+        @endif
         @if ($ctx->can('contracts.view') && $contracts->isNotEmpty())
         <div class="card"><div class="card-head"><h2>Contracts</h2></div><div class="card-body text-sm space-y-1">
             @foreach ($contracts as $c)<div class="flex justify-between"><a href="{{ $bu }}/contracts/{{ $c->id }}">{{ $c->number }} · {{ $c->title }}</a>@include('partials.status', ['s' => $c->status])</div>@endforeach

@@ -18,7 +18,7 @@ class BackupCatalog
         'contract_templates', 'contracts', 'contract_versions', 'contract_recipients', 'electronic_consents', 'signature_events', 'contract_billing_milestones',
         'invoice_sequences', 'recurring_schedules', 'recurring_line_items', 'invoices', 'invoice_lines', 'invoice_tax_lines', 'invoice_document_versions',
         'credit_notes', 'credit_note_lines', 'payment_claims', 'payments', 'payment_allocations', 'refunds', 'schedule_runs',
-        'expenses', 'expense_lines', 'vendor_payments', 'money_movements', 'import_batches', 'reconciliation_sessions', 'bank_transactions',
+        'projects', 'expenses', 'expense_lines', 'mileage_trips', 'vendor_payments', 'money_movements', 'import_batches', 'reconciliation_sessions', 'bank_transactions',
         'public_tokens', 'email_outbox', 'email_attempts', 'document_access_events', 'audit_events',
     ];
 
@@ -27,9 +27,9 @@ class BackupCatalog
         'businesses' => 'Business settings', 'clients' => 'Clients', 'contacts' => 'Contacts', 'products_services' => 'Products & services',
         'vendors' => 'Vendors', 'tax_rates' => 'Tax rates', 'chart_accounts' => 'Accounts', 'bank_accounts' => 'Bank accounts',
         'invoices' => 'Invoices', 'credit_notes' => 'Credit notes', 'payments' => 'Payments', 'payment_claims' => 'Payment reports',
-        'payment_allocations' => 'Payment allocations', 'refunds' => 'Refunds', 'expenses' => 'Expenses & bills', 'vendor_payments' => 'Vendor payments',
+        'payment_allocations' => 'Payment allocations', 'refunds' => 'Refunds', 'expenses' => 'Expenses & bills', 'projects' => 'Projects', 'mileage_trips' => 'Mileage trips', 'vendor_payments' => 'Vendor payments',
         'money_movements' => 'Transfers', 'bank_transactions' => 'Bank transactions', 'reconciliation_sessions' => 'Reconciliations',
-        'import_batches' => 'Bank imports', 'contracts' => 'Contracts', 'contract_versions' => 'Contract versions',
+        'import_batches' => 'Imports', 'contracts' => 'Contracts', 'contract_versions' => 'Contract versions',
         'contract_recipients' => 'Contract signers', 'contract_templates' => 'Contract templates', 'contract_billing_milestones' => 'Contract milestones',
         'recurring_schedules' => 'Recurring schedules', 'journal_entries' => 'Journal entries', 'accounting_periods' => 'Accounting periods',
         'roles' => 'Roles', 'memberships' => 'Members', 'invitations' => 'Invitations', 'private_documents' => 'Files',

@@ -570,4 +570,45 @@
       apply();
     });
   }
+
+  // Choosing a client project fills in its client.
+  {
+    $$('[data-project-select]').forEach((sel) => {
+      const client = $(sel.dataset.projectSelect);
+      if (!client) return;
+      sel.addEventListener('change', () => {
+        const c = sel.selectedOptions[0]?.dataset.client;
+        if (c) client.value = c;
+      });
+    });
+  }
+
+  // Select-all checkbox for tables: [data-check-all="group"] toggles [data-check="group"].
+  {
+    $$('[data-check-all]').forEach((all) => {
+      const boxes = () => $$('[data-check="' + all.dataset.checkAll + '"]').filter((b) => !b.disabled && !b.closest('[hidden]'));
+      all.addEventListener('change', () => boxes().forEach((b) => { b.checked = all.checked; }));
+    });
+  }
+
+  // Live IRS mileage quote: form[data-mileage-rates='[{"from":"YYYY-MM-DD","millis":700}]'].
+  {
+    $$('[data-mileage-rates]').forEach((form) => {
+      const rates = JSON.parse(form.dataset.mileageRates || '[]').sort((a, b) => (a.from < b.from ? 1 : -1));
+      const out = $('[data-mileage-quote]', form);
+      const date = $('[name="trip_date"]', form), miles = $('[name="miles"]', form), round = $('[name="round_trip"][type="checkbox"]', form);
+      const update = () => {
+        const r = rates.find((x) => x.from <= date.value);
+        const m = Math.round((parseFloat(miles.value) || 0) * (round.checked ? 2 : 1) * 10) / 10;
+        if (!r) { out.textContent = 'No IRS rate known for this date.'; return; }
+        const cents = Math.round(Math.round(m * 10) * r.millis / 100);
+        const latest = rates[0];
+        const provisional = r === latest && date.value.slice(0, 4) > r.from.slice(0, 4);
+        out.textContent = m + ' mi × ' + (r.millis / 10) + '¢ = $' + (cents / 100).toFixed(2) + (provisional ? ' (provisional: uses the ' + r.from.slice(0, 4) + ' rate until the IRS publishes ' + date.value.slice(0, 4) + ')' : '');
+      };
+      [date, miles, round].forEach((el) => el && el.addEventListener('input', update));
+      round && round.addEventListener('change', update);
+      update();
+    });
+  }
 })();

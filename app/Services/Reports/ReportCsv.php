@@ -33,6 +33,8 @@ class ReportCsv
                 ['Payments received', $this->m($d['collected'])], ['Outstanding now', $this->m($d['outstanding'])], ['Overdue now', $this->m($d['overdue'])]],
             'sales-by-client', 'expenses-by-category', 'expenses-by-vendor' => array_merge([$period, ['Name', 'Amount']],
                 array_map(fn ($r) => [$r['label'], $this->m($r['amount'])], $d['rows']), [['Total', $this->m($d['total'])]]),
+            'expenses-by-client', 'expenses-by-project' => array_merge([$period, [$d['by'] === 'project' ? 'Project' : 'Client', 'Expenses', 'Billable', 'Amount']],
+                array_map(fn ($r) => [$r['label'], $r['count'], $this->m($r['billable']), $this->m($r['amount'])], $d['rows']), [['Total', '', '', $this->m($d['total'])]]),
             'sales-by-item' => array_merge([$period, ['Item', 'Quantity', 'Amount']],
                 array_map(fn ($r) => [$r['label'], $r['qty'], $this->m($r['amount'])], $d['rows']), [['Total', '', $this->m($d['total'])]]),
             'sales-tax' => array_merge([$period, ['Opening liability', $this->m($d['opening'])], ['Tax on issued invoices', $this->m($d['invoiced'])],

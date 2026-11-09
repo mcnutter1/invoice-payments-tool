@@ -17,6 +17,7 @@ class Business extends Model
         'show_tax_id' => 'boolean',
         'backups_enabled' => 'boolean',
         'w9_settings' => 'array',
+        'expense_import_mappings' => 'array',
         'books_closed_through' => 'date',
         'payment_instructions_changed_at' => 'datetime',
     ];
