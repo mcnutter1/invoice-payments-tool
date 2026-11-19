@@ -50,7 +50,7 @@ class BusinessController extends Controller
         $data = $request->validate([
             'legal_name' => ['required', 'string', 'max:200'],
             'display_name' => ['nullable', 'string', 'max:200'],
-            'entity_type' => ['nullable', 'in:sole_proprietor,llc,s_corp,c_corp,partnership,other'],
+            'entity_type' => ['nullable', \Illuminate\Validation\Rule::in(array_keys(\App\Models\Business::ENTITY_TYPES))],
             'timezone' => ['required', 'timezone:all'],
             'public_email' => ['nullable', 'email'],
         ]);

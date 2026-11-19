@@ -13,7 +13,14 @@
     <fieldset class="card-body grid gap-4 sm:grid-cols-3" {{ $dis }}>
         <div><label class="label" for="legal_name">Legal name</label><input class="input" id="legal_name" name="legal_name" value="{{ old('legal_name', $b->legal_name) }}" required></div>
         <div><label class="label" for="display_name">Display name / DBA</label><input class="input" id="display_name" name="display_name" value="{{ old('display_name', $b->display_name) }}" required></div>
-        <div><label class="label" for="entity_type">Entity type</label><input class="input" id="entity_type" name="entity_type" value="{{ old('entity_type', $b->entity_type) }}"></div>
+        <div><label class="label" for="entity_type">Entity type</label>
+            @php $et = old('entity_type', $b->entity_type); @endphp
+            <select class="input" id="entity_type" name="entity_type">
+                <option value="">Not set</option>
+                @foreach (\App\Models\Business::ENTITY_TYPES as $k => $v)<option value="{{ $k }}" @selected($et === $k)>{{ $v }}</option>@endforeach
+                @if ($et && ! isset(\App\Models\Business::ENTITY_TYPES[$et]))<option value="{{ $et }}" selected>{{ $et }}</option>@endif
+            </select>
+            @error('entity_type')<p class="field-error">{{ $message }}</p>@enderror</div>
         <div><label class="label" for="address_line1">Address</label><input class="input" id="address_line1" name="address_line1" value="{{ old('address_line1', $b->address_line1) }}"><input class="input mt-1" name="address_line2" value="{{ old('address_line2', $b->address_line2) }}" aria-label="Address line 2"></div>
         <div class="grid grid-cols-3 gap-2 self-end"><input class="input" name="city" placeholder="City" aria-label="City" value="{{ old('city', $b->city) }}"><input class="input" name="state" placeholder="State" aria-label="State" value="{{ old('state', $b->state) }}"><input class="input" name="postal_code" placeholder="ZIP" aria-label="ZIP" value="{{ old('postal_code', $b->postal_code) }}"></div>
         <div><label class="label" for="phone">Phone</label><input class="input" id="phone" name="phone" value="{{ old('phone', $b->phone) }}"></div>

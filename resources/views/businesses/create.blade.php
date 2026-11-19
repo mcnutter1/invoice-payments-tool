@@ -10,7 +10,7 @@
     <div class="grid gap-4 sm:grid-cols-2">
         <div><label class="label" for="entity_type">Entity type</label>
             <select class="input" id="entity_type" name="entity_type">
-                @foreach (['llc' => 'LLC', 'sole_proprietor' => 'Sole proprietor', 's_corp' => 'S corporation', 'c_corp' => 'C corporation', 'partnership' => 'Partnership', 'other' => 'Other'] as $k => $v)
+                @foreach (\App\Models\Business::ENTITY_TYPES as $k => $v)
                     <option value="{{ $k }}" @selected(old('entity_type') === $k)>{{ $v }}</option>
                 @endforeach
             </select>

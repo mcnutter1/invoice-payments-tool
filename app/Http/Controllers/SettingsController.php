@@ -48,7 +48,8 @@ class SettingsController extends Controller
         $data = $request->validate([
             'legal_name' => ['required', 'string', 'max:200'],
             'display_name' => ['required', 'string', 'max:200'],
-            'entity_type' => ['nullable', 'string', 'max:40'],
+            // Older businesses may hold a free-text value; keep accepting it unchanged.
+            'entity_type' => ['nullable', Rule::in(array_filter(array_merge(array_keys(\App\Models\Business::ENTITY_TYPES), [$b->entity_type])))],
             'address_line1' => ['nullable', 'string', 'max:200'], 'address_line2' => ['nullable', 'string', 'max:200'],
             'city' => ['nullable', 'string', 'max:100'], 'state' => ['nullable', 'string', 'max:60'], 'postal_code' => ['nullable', 'string', 'max:20'],
             'phone' => ['nullable', 'string', 'max:40'], 'public_email' => ['nullable', 'email'], 'website' => ['nullable', 'url', 'max:200'],

@@ -10,6 +10,8 @@ class Business extends Model
 {
     protected $guarded = ['id', 'ulid'];
 
+    public const ENTITY_TYPES = ['llc' => 'LLC', 'sole_proprietor' => 'Sole proprietor', 's_corp' => 'S corporation', 'c_corp' => 'C corporation', 'partnership' => 'Partnership', 'other' => 'Other'];
+
     protected $hidden = ['ach_account_number_encrypted', 'stripe_secret_key_encrypted', 'stripe_webhook_secret_encrypted', 'venmo_api_token_hash', 'tax_id_encrypted', 'w9_tin_encrypted'];
 
     protected $casts = [
