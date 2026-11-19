@@ -16,6 +16,7 @@ class BackupSnapshot extends Model
         'since_at' => 'datetime',
         'started_at' => 'datetime',
         'finished_at' => 'datetime',
+        'verified_at' => 'datetime',
         'table_stats' => 'array',
     ];
 

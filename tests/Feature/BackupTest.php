@@ -254,6 +254,8 @@ class BackupTest extends TestCase
         $this->assertSame('ops@example.test', $m->to);
         $this->assertSame('Weekly backup summary', $m->subject);
         $this->assertStringContainsString('restore test passed', $m->body);
+        $admin = $this->makeUser('u_root', null, ['admin', 'user']);
+        $this->signIn($admin)->get('/platform/backups')->assertOk()->assertSee('passed');
 
         // A damaged object is caught by the restore test.
         $this->store->objects[$snap->object_key] .= 'x';
