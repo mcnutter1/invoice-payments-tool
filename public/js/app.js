@@ -676,5 +676,9 @@
       report.open = true; report.scrollIntoView({ behavior: 'smooth', block: 'start' });
       $('input[name="amount"]', report)?.focus({ preventScroll: true });
     }));
+    const reportSelect = report && $('select[name="method"]', report);
+    $$('input[name="paymethod"]').forEach((r) => r.addEventListener('change', () => {
+      if (reportSelect && $$('option', reportSelect).some((o) => o.value === r.value)) reportSelect.value = r.value;
+    }));
   }
 })();

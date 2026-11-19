@@ -157,6 +157,22 @@
   .inv-totals dd { @apply tabular-nums; }
   .inv-grand { border-top: 2px solid var(--accent); @apply mt-1 pt-2 text-base font-bold; }
   .inv-grand dt { @apply text-slate-900; }
+  /* Public "How to pay": radio tiles choose which method panel is shown (pure CSS). */
+  .pay { --accent: #1f5f8b; }
+  .pay-step-n { background: var(--accent); @apply flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white; }
+  .pay-tile { @apply relative flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:border-slate-400; }
+  .pay-tile:has(input:checked) { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .pay-tile:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .pay-radio { @apply mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-slate-300 bg-white; }
+  .pay-tile:has(input:checked) .pay-radio { border-color: var(--accent); }
+  .pay-tile:has(input:checked) .pay-radio::after { content: ""; background: var(--accent); @apply h-2.5 w-2.5 rounded-full; }
+  .pay-panel { display: none; }
+  .pay-picker:has(input[value="card"]:checked) .pay-panel[data-method="card"],
+  .pay-picker:has(input[value="ach"]:checked) .pay-panel[data-method="ach"],
+  .pay-picker:has(input[value="zelle"]:checked) .pay-panel[data-method="zelle"],
+  .pay-picker:has(input[value="venmo"]:checked) .pay-panel[data-method="venmo"],
+  .pay-picker:has(input[value="check"]:checked) .pay-panel[data-method="check"] { display: block; }
+  .pay-next { @apply flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-4 py-4 sm:px-5; }
   .sr-only-focusable:not(:focus) { @apply sr-only; }
   .panel { @apply rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-900/5 sm:p-6; }
   .panel-label { @apply text-xs font-medium uppercase tracking-wider text-slate-500; }
@@ -170,4 +186,9 @@
   .trend-down { @apply bg-red-50 text-red-700; }
   .kpi { @apply flex flex-col gap-1.5 px-5 py-5 no-underline transition hover:bg-slate-50/70 sm:px-6 lg:border-l lg:border-slate-100 lg:first:border-l-0; }
   .kpi-value { @apply text-xl font-semibold tracking-tight tabular-nums text-slate-900 sm:text-2xl; }
+}
+
+/* Browsers without :has() show every payment panel instead of none. */
+@supports not selector(:has(*)) {
+  .pay-panel { display: block; }
 }

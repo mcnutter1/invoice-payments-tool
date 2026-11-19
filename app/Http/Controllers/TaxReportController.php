@@ -95,7 +95,7 @@ class TaxReportController extends Controller
         if ($e['payroll']) $section('Payroll taxes', $e['payroll']['lines']);
         $section('State — '.$e['state']['name'], $e['state']['lines']);
         $rows[] = ['Summary'];
-        foreach (['federal' => 'Federal', 'state' => 'State', 'payroll' => 'Payroll', 'total' => 'Total', 'paid' => 'Paid', 'balance' => 'Balance due'] as $k => $l) $rows[] = [$l, $m((int) $e['summary'][$k])];
+        foreach (['federal' => 'Federal (whole return)', 'state' => 'State (whole return)', 'payroll' => 'Payroll', 'total' => 'Total (whole return)', 'business_tax' => 'Tax from this business', 'paid' => 'Estimates paid', 'balance' => 'Balance due (this business)'] as $k => $l) $rows[] = [$l, $m((int) $e['summary'][$k])];
         foreach ($e['warnings'] as $w) $rows[] = ['Warning', $w];
         $out = fopen('php://temp', 'r+');
         foreach ($rows as $r) fputcsv($out, array_map(fn ($v) => is_string($v) && preg_match('/^[=+\-@\t\r]/', $v) && ! is_numeric($v) ? "'".$v : $v, $r), ',', '"', '\\');

@@ -35,31 +35,53 @@
     $options = array_values(array_filter(\App\Support\PaymentMethods::INVOICE, fn ($m) => ! empty($instructions[$m])));
     $ach = $instructions['ach'] ?? null;
     $meta = [
-        'card' => ['Pay by card', 'Visa, Mastercard, American Express, Discover', 'Instant', 'chip-green'],
-        'ach' => ['Bank transfer (ACH / wire)', $ach && ! empty($ach['bank_name']) ? 'To our account at '.$ach['bank_name'] : 'From your bank’s bill pay or wire transfer', 'No fees', 'chip-gray'],
-        'zelle' => ['Zelle', 'Send from your bank’s app or website', 'Fast', 'chip-violet'],
-        'venmo' => ['Venmo', ! empty($instructions['venmo']['handle']) ? '@'.$instructions['venmo']['handle'] : 'Pay from the Venmo app', 'Venmo app', 'chip-blue'],
-        'check' => ['Mail a check', 'Payable to '.($instructions['check']['payee'] ?? ''), 'Allow mail time', 'chip-gray'],
+        'card' => ['Pay by card', 'Visa, Mastercard, Amex, Discover', 'Instant · confirmed automatically'],
+        'ach' => ['Bank transfer (ACH / wire)', $ach && ! empty($ach['bank_name']) ? 'To our account at '.$ach['bank_name'] : 'Bill pay or wire from your bank', '1–3 business days · no fees'],
+        'zelle' => ['Zelle', 'From your bank’s app or website', 'Usually within minutes'],
+        'venmo' => ['Venmo', ! empty($instructions['venmo']['handle']) ? '@'.$instructions['venmo']['handle'] : 'From the Venmo app', 'Usually within minutes'],
+        'check' => ['Mail a check', 'Payable to '.($instructions['check']['payee'] ?? ''), 'Allow time for mail'],
     ];
     $openFirst = in_array(request('method'), $options, true) ? request('method') : ($options[0] ?? null);
     $sentLink = fn (string $m) => $canReport && in_array($m, $reportMethods, true) && ! $preview;
+    $hasManual = ($canReport || $preview) && array_intersect($options, \App\Support\PaymentMethods::MANUAL);
 @endphp
-<section class="mt-8 scroll-mt-4 space-y-4" id="howtopay" aria-labelledby="howtopay-h">
+<section class="pay mt-8 scroll-mt-4 space-y-5" id="howtopay" aria-labelledby="howtopay-h" style="--accent: {{ $accent }}">
     <div>
         <h2 id="howtopay-h" class="text-xl">How to pay</h2>
-        <p class="text-sm text-slate-500">Pay {{ $M($invoice->balance_cents) }} using one of the options below.{{ array_diff($options, ['card']) ? ' For bank, Zelle, Venmo or check payments, let '.$business['name'].' know once you’ve sent it.' : '' }}</p>
+        <p class="text-sm text-slate-500">{{ $M($invoice->balance_cents) }} due {{ $invoice->due_date?->format('F j, Y') ?? 'on receipt' }} · reference <span class="font-mono text-slate-700">{{ $memo }}</span></p>
     </div>
 
-    <div class="space-y-3">
+    <ol @class(['grid gap-3 text-sm', 'sm:grid-cols-3' => $hasManual, 'sm:grid-cols-2' => ! $hasManual])>
+        <li class="flex gap-3"><span class="pay-step-n">1</span><span><strong class="block text-slate-900">Choose a method</strong><span class="text-slate-600">Pick whichever is easiest for you.</span></span></li>
+        <li class="flex gap-3"><span class="pay-step-n">2</span><span><strong class="block text-slate-900">Send {{ $M($invoice->balance_cents) }}</strong><span class="text-slate-600">Include <span class="font-mono">{{ $memo }}</span> so we can match it.</span></span></li>
+        @if ($hasManual)
+            <li class="flex gap-3"><span class="pay-step-n">3</span><span><strong class="block text-slate-900">Let us know it’s sent</strong><span class="text-slate-600">{{ in_array('card', $options, true) ? 'Not needed for card — that’s confirmed automatically.' : 'We’ll confirm and email you a receipt.' }}</span></span></li>
+        @endif
+    </ol>
+
+    <div class="pay-picker space-y-4">
+    <fieldset @class(['hidden' => count($options) === 1])>
+        <legend class="sr-only">Payment method</legend>
+        <div @class(['grid gap-3', 'sm:grid-cols-2' => count($options) > 1, 'lg:grid-cols-3' => count($options) > 2])>
+        @foreach ($options as $m)
+            @php [$title, $blurb, $timing] = $meta[$m]; @endphp
+            <label class="pay-tile">
+                <input class="sr-only" type="radio" name="paymethod" value="{{ $m }}" @checked($m === $openFirst)>
+                <span class="pay-radio" aria-hidden="true"></span>
+                <span class="min-w-0">
+                    <span class="block font-semibold text-slate-900">{{ $title }}</span>
+                    <span class="block truncate text-sm text-slate-500">{{ $blurb }}</span>
+                    <span class="mt-1 block text-xs text-slate-500">{{ $timing }}</span>
+                </span>
+            </label>
+        @endforeach
+        </div>
+    </fieldset>
+
     @foreach ($options as $m)
-        @php [$title, $blurb, $tag, $tagClass] = $meta[$m]; @endphp
-        <details name="paymethod" id="pay-{{ $m }}" class="card group scroll-mt-4 overflow-hidden" @if($m === $openFirst) open @endif>
-            <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-4 sm:px-5">
-                <span class="min-w-0"><span class="block font-semibold text-slate-900">{{ $title }}</span><span class="block truncate text-sm text-slate-500">{{ $blurb }}</span></span>
-                <span class="flex shrink-0 items-center gap-2"><span class="chip {{ $tagClass }}">{{ $tag }}</span>
-                    <svg aria-hidden="true" viewBox="0 0 20 20" class="h-5 w-5 fill-current text-slate-400 transition-transform group-open:rotate-180"><path d="M5.3 7.3a1 1 0 0 1 1.4 0L10 10.6l3.3-3.3a1 1 0 1 1 1.4 1.4l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 0 1 0-1.4Z"/></svg></span>
-            </summary>
-            <div class="border-t border-slate-100 px-4 py-4 sm:px-5">
+        <div class="pay-panel card scroll-mt-4 overflow-hidden" data-method="{{ $m }}" id="pay-{{ $m }}" role="region" aria-label="{{ $meta[$m][0] }}">
+            <div class="card-body">
+            <h3 class="mb-3">{{ $m === 'card' ? 'Pay securely by card' : 'Send '.$M($invoice->balance_cents).' by '.\App\Support\PaymentMethods::label($m) }}</h3>
 
             @if ($m === 'card')
                 @if ($autopay)
@@ -146,36 +168,47 @@
                 </dl>
                 @unless ($preview)<a class="btn btn-sm mt-4" href="/i/v/{{ $invoice->ulid }}/remittance">Print remittance slip</a>@endunless
             @endif
+            </div>
 
-            @if ($sentLink($m))
-                <div class="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
-                    <span class="text-sm text-slate-500">Already sent it?</span>
-                    <a class="btn btn-sm" href="/i/v/{{ $invoice->ulid }}?report=1&amp;method={{ $m }}#report" data-report-method="{{ $m }}">I’ve sent this payment</a>
+            @if ($m === 'card')
+                <div class="pay-next"><p class="text-sm text-slate-600"><strong class="text-slate-900">That’s it.</strong> Card payments are recorded instantly and you’ll get a receipt by email.</p></div>
+            @elseif ($sentLink($m))
+                <div class="pay-next">
+                    <p class="text-sm text-slate-600"><strong class="block text-slate-900">Sent it? Let {{ $business['name'] }} know.</strong>It takes a few seconds and helps us match your payment quickly.</p>
+                    <a class="btn btn-primary w-full justify-center sm:w-auto" href="/i/v/{{ $invoice->ulid }}?report=1&amp;method={{ $m }}#report" data-report-method="{{ $m }}">I’ve sent this payment</a>
                 </div>
             @endif
-            </div>
-        </details>
+        </div>
     @endforeach
     </div>
 
     @if ($canReport)
-    <details id="report" class="group scroll-mt-4" @if($errors->any() || ! empty($openReport)) open @endif>
-        <summary class="summary-btn">
-            <svg aria-hidden="true" viewBox="0 0 20 20" class="h-5 w-5 fill-current"><path d="M16.7 5.3a1 1 0 0 1 0 1.4l-8 8a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.4L8 12.6l7.3-7.3a1 1 0 0 1 1.4 0Z"/></svg>
-            <span>I've sent payment</span>
-            <span class="text-sm font-normal opacity-80 group-open:hidden">Tell {{ $business['name'] }}</span>
+    <details id="report" class="card group scroll-mt-4 overflow-hidden" @if($errors->any() || ! empty($openReport)) open @endif>
+        <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-4 sm:px-5">
+            <span class="flex items-center gap-3">
+                <svg aria-hidden="true" viewBox="0 0 20 20" class="h-6 w-6 shrink-0 fill-current text-emerald-600"><path d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm3.7-9.3-4 4a1 1 0 0 1-1.4 0l-2-2a1 1 0 1 1 1.4-1.4L9 10.6l3.3-3.3a1 1 0 0 1 1.4 1.4Z"/></svg>
+                <span><span class="block font-semibold text-slate-900">Already paid? Tell {{ $business['name'] }}</span><span class="block text-sm text-slate-500">For bank transfer, Zelle, Venmo or check payments</span></span>
+            </span>
+            <svg aria-hidden="true" viewBox="0 0 20 20" class="h-5 w-5 shrink-0 fill-current text-slate-400 transition-transform group-open:rotate-180"><path d="M5.3 7.3a1 1 0 0 1 1.4 0L10 10.6l3.3-3.3a1 1 0 1 1 1.4 1.4l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 0 1 0-1.4Z"/></svg>
         </summary>
-        <form method="post" action="/i/v/{{ $invoice->ulid }}/report-payment" enctype="multipart/form-data" class="card card-body mt-3 grid gap-4 sm:grid-cols-2">
+        <form method="post" action="/i/v/{{ $invoice->ulid }}/report-payment" enctype="multipart/form-data" class="grid gap-4 border-t border-slate-100 px-4 py-5 sm:grid-cols-2 sm:px-5">
             @csrf
-            <p class="text-sm text-slate-600 sm:col-span-2">Let {{ $business['name'] }} know you’ve sent a bank transfer, Zelle, Venmo or check so they can look for it. Paid by card? There’s nothing to report — it’s recorded automatically.</p>
-            <div><label class="label" for="method">Method</label><select class="input" id="method" name="method">@foreach ($reportMethods as $m)<option value="{{ $m }}" @selected(old('method', $reportMethod ?? null) === $m)>{{ \App\Support\PaymentMethods::label($m) }}</option>@endforeach</select></div>
+            <div><label class="label" for="method">How did you pay?</label><select class="input" id="method" name="method">@foreach ($reportMethods as $m)<option value="{{ $m }}" @selected(old('method', $reportMethod ?? null) === $m)>{{ \App\Support\PaymentMethods::label($m) }}</option>@endforeach</select></div>
             <div><label class="label" for="amount">Amount sent ($)</label><input class="input" id="amount" name="amount" type="number" inputmode="decimal" step="0.01" min="0.01" required value="{{ old('amount', $amountValue) }}"></div>
             <div><label class="label" for="reported_date">Date sent or mailed</label><input class="input" id="reported_date" name="reported_date" type="date" required value="{{ old('reported_date', now()->toDateString()) }}"></div>
-            <div><label class="label" for="check_number">Check number (if check)</label><input class="input" id="check_number" name="check_number" inputmode="numeric" value="{{ old('check_number') }}"></div>
-            <div class="sm:col-span-2"><label class="label" for="reference">Confirmation / reference (optional)</label><input class="input" id="reference" name="reference" value="{{ old('reference') }}" placeholder="ACH trace or wire confirmation, Zelle or Venmo ID"></div>
-            <div class="sm:col-span-2"><label class="label" for="note">Note (optional)</label><textarea class="input" id="note" name="note" rows="2">{{ old('note') }}</textarea></div>
-            <div class="sm:col-span-2"><label class="label" for="receipt">Receipt screenshot or PDF (optional)</label><input class="input" id="receipt" name="receipt" type="file" accept="application/pdf,image/png,image/jpeg"><p class="hint">Do not include your own bank account or routing numbers.</p></div>
-            <div class="sm:col-span-2"><button class="btn btn-primary btn-lg w-full sm:w-auto">Send payment report</button><p class="hint mt-2">This notifies {{ $business['name'] }}. The invoice is marked paid once they confirm receipt, and you’ll get a thank-you email with the paid invoice.</p></div>
+            <div><label class="label" for="check_number">Check number <span class="font-normal text-slate-500">(checks only)</span></label><input class="input" id="check_number" name="check_number" inputmode="numeric" value="{{ old('check_number') }}"></div>
+            <div class="sm:col-span-2"><label class="label" for="reference">Confirmation number <span class="font-normal text-slate-500">(optional)</span></label><input class="input" id="reference" name="reference" value="{{ old('reference') }}" placeholder="ACH trace, wire confirmation, Zelle or Venmo ID"></div>
+            <div class="sm:col-span-2"><label class="label" for="note">Note <span class="font-normal text-slate-500">(optional)</span></label><textarea class="input" id="note" name="note" rows="2">{{ old('note') }}</textarea></div>
+            <div class="sm:col-span-2"><label class="label" for="receipt">Receipt screenshot or PDF <span class="font-normal text-slate-500">(optional)</span></label><input class="input" id="receipt" name="receipt" type="file" accept="application/pdf,image/png,image/jpeg"><p class="hint">Please hide your own bank account and routing numbers.</p></div>
+            <div class="sm:col-span-2 rounded-md bg-slate-50 p-3 text-sm text-slate-600">
+                <strong class="block text-slate-900">What happens next</strong>
+                <ol class="mt-1 list-decimal space-y-0.5 pl-5">
+                    <li>{{ $business['name'] }} is notified and looks for your payment.</li>
+                    <li>Once it arrives, they confirm it and the invoice is marked paid.</li>
+                    <li>You get a thank-you email with the paid invoice for your records.</li>
+                </ol>
+            </div>
+            <div class="sm:col-span-2"><button class="btn btn-primary btn-lg w-full sm:w-auto">Send payment report</button></div>
         </form>
     </details>
     @endif

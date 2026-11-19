@@ -114,6 +114,14 @@ return [
         'prefetch_seconds' => (int) env('FINANCE_PREFETCH_SECONDS', 30),
     ],
 
+    // Server Manager helper endpoint (POST /srvmgr/helper). Token is the HMAC key shared with manage.mcnutt.cloud.
+    'srvmgr' => [
+        'token' => env('SRVMGR_HELPER_TOKEN', ''),
+        'allow_legacy_token' => (bool) env('SRVMGR_ALLOW_LEGACY_TOKEN', false),
+        'allowed_ips' => env('SRVMGR_ALLOWED_IPS', ''),
+        'tolerance_seconds' => 300,
+    ],
+
     'trusted_proxies' => env('TRUSTED_PROXIES'),
 
     // Comma list of central principal IDs allowed to manage platform role mappings (no tenant access implied).

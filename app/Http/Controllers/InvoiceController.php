@@ -429,6 +429,18 @@ class InvoiceController extends Controller
         return back()->with('status', 'Automatic reminders turned '.($on ? 'on' : 'off').' for this invoice.');
     }
 
+    public function updatePaymentMethods(Request $request, int $id)
+    {
+        $data = $request->validate([
+            'payment_methods' => ['required', 'array', 'min:1'],
+            'payment_methods.*' => [Rule::in(\App\Support\PaymentMethods::INVOICE)],
+        ]);
+        $invoice = $this->service->updatePaymentMethods($this->invoice($id), $data['payment_methods']);
+        $labels = collect($invoice->instructions_snapshot['methods'])->map(fn ($m) => \App\Support\PaymentMethods::label($m))->implode(', ');
+
+        return back()->with('status', "Payment options updated: {$labels}. The client's invoice link and PDF now show them.");
+    }
+
     public function void(Request $request, int $id)
     {
         $data = $request->validate(['reason' => ['required', 'string', 'max:500'], 'reissue' => ['nullable', 'boolean']]);

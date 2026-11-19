@@ -251,6 +251,30 @@ class InvoiceService
         });
     }
 
+    /** Re-freeze the payment options on an issued, unpaid invoice from the business's current payment details. */
+    public function updatePaymentMethods(Invoice $invoice, array $requested): Invoice
+    {
+        return DB::transaction(function () use ($invoice, $requested) {
+            $invoice = Invoice::where('business_id', $invoice->business_id)->lockForUpdate()->findOrFail($invoice->id);
+            if (! $invoice->isIssued() || $invoice->balance_cents <= 0) {
+                throw new DomainException('Payment options can only be changed on an issued invoice with a balance due.');
+            }
+            $business = Business::findOrFail($invoice->business_id);
+            $methods = \App\Support\PaymentMethods::forInvoice($business, $invoice->client, $requested);
+            if (! $methods) {
+                throw new DomainException('Choose at least one payment method this client can use.');
+            }
+            $before = $invoice->instructions_snapshot['methods'] ?? [];
+            $invoice->payment_methods = $methods;
+            $invoice->instructions_snapshot = InvoicePresenter::instructionsSnapshot($business, $methods);
+            $invoice->save();
+            $this->generatePdf($invoice, 'payment options updated');
+            Audit::log($business, 'invoice.payment_methods_updated', $invoice, ['methods' => $before], ['methods' => $invoice->instructions_snapshot['methods']]);
+
+            return $invoice->fresh();
+        });
+    }
+
     private function checkContractCap(Invoice $invoice): void
     {
         if (! $invoice->contract_id) return;

@@ -8,14 +8,14 @@
 @endphp
 
 <section class="grid grid-cols-2 gap-3 lg:grid-cols-4">
-    <div class="metric"><div class="metric-label">Estimated total tax {{ $e['year'] }}</div><div class="metric-value">{{ $M($s['total']) }}</div>
-        <div class="metric-note">Federal {{ $M($s['federal']) }} · State {{ $M($s['state']) }}@if($s['payroll']) · Payroll {{ $M($s['payroll']) }}@endif</div></div>
+    <div class="metric"><div class="metric-label">Tax from this business {{ $e['year'] }}</div><div class="metric-value">{{ $M($s['business_tax']) }}</div>
+        <div class="metric-note">Federal {{ $M($s['business_federal']) }} · State {{ $M($s['business_state']) }}@if($s['payroll']) · plus payroll {{ $M($s['payroll']) }}@endif<br>Whole return {{ $M($s['total']) }}</div></div>
     <div class="metric"><div class="metric-label">Net business income (tax basis)</div><div class="metric-value">{{ $M($s['net_business_income']) }}</div>
         <div class="metric-note">{{ $e['projecting'] ? 'Actual to '.$e['as_of']->format('M j').' + expected to Dec 31' : 'Full year actual' }}</div></div>
-    <div class="metric"><div class="metric-label">Paid so far</div><div class="metric-value">{{ $M($s['paid']) }}</div><div class="metric-note">Withholding + estimated payments entered</div></div>
+    <div class="metric"><div class="metric-label">Estimates paid</div><div class="metric-value">{{ $M($s['paid']) }}</div><div class="metric-note">Federal + state estimated payments entered</div></div>
     <div class="metric"><div class="metric-label">{{ $s['balance'] >= 0 ? 'Estimated balance due' : 'Estimated overpayment' }}</div>
         <div @class(['metric-value', 'text-red-700' => $s['balance'] > 0, 'text-emerald-700' => $s['balance'] < 0])>{{ $M(abs($s['balance'])) }}</div>
-        <div class="metric-note">@if ($s['effective_rate'] !== null)Set aside ≈ {{ round($s['effective_rate'] * 100, 1) }}% of business profit @endif</div></div>
+        <div class="metric-note">Extra tax from this business’s earnings only — excludes W-2 withholding and other income.@if ($s['effective_rate'] !== null) Set aside ≈ {{ round($s['effective_rate'] * 100, 1) }}% of business profit.@endif</div></div>
 </section>
 
 @if ($e['warnings'])

@@ -153,21 +153,24 @@ class TaxEstimator
 
         // 5. Payments, balance and quarterly estimates.
         $fedLiability = $fedTotal;
-        $fedPaid = $p['fed_withholding'] + $p['fed_estimates_paid'];
         $stateLiability = $state['total'];
-        $statePaid = $p['state_withholding'] + $p['state_estimates_paid'];
         $fedEst = $this->estimates($year, $fedLiability, $p['fed_withholding'], $p['fed_estimates_paid'], $p['prior_year_fed_tax'], $p['prior_year_agi'], $t['estimated'], $fs, $p['entity'] === 'c_corp', $today);
         $stEst = $st && isset($st['data']['estimated']) ? $this->estimates($year, $stateLiability, $p['state_withholding'], $p['state_estimates_paid'], $p['prior_year_state_tax'], 0, $st['data']['estimated'], $fs, $p['entity'] === 'c_corp', $today) : null;
 
         $totalTax = $fedLiability + $stateLiability + $payrollTotal;
+        // Balance due covers only the extra tax this business creates; W-2 withholding and other income are left out.
+        $fedBusiness = $p['entity'] === 'c_corp' ? $fedLiability : $fedTotal - $without['total'];
+        $stateBusiness = $p['entity'] === 'c_corp' ? $stateLiability : $stateLiability - ($state['without'] ?? 0);
         $summary = [
             'federal' => $fedLiability, 'state' => $stateLiability, 'payroll' => $payrollTotal,
             'owner_personal' => $p['entity'] === 'c_corp' ? $owner['total'] : null,
-            'total' => $totalTax, 'paid' => $fedPaid + $statePaid,
-            'balance' => $fedLiability - $fedPaid + $stateLiability - $statePaid,
-            'fed_balance' => $fedLiability - $fedPaid, 'state_balance' => $stateLiability - $statePaid,
+            'total' => $totalTax, 'paid' => $p['fed_estimates_paid'] + $p['state_estimates_paid'],
+            'business_federal' => $fedBusiness, 'business_state' => $stateBusiness,
+            'business_tax' => $fedBusiness + $stateBusiness,
+            'balance' => $fedBusiness - $p['fed_estimates_paid'] + $stateBusiness - $p['state_estimates_paid'],
+            'fed_balance' => $fedBusiness - $p['fed_estimates_paid'], 'state_balance' => $stateBusiness - $p['state_estimates_paid'],
             'net_business_income' => $net,
-            'attributable' => $p['entity'] === 'c_corp' ? $fedLiability + $stateLiability + $payrollTotal : ($fedTotal - $without['total']) + ($stateLiability - ($state['without'] ?? 0)) + $payrollTotal,
+            'attributable' => $fedBusiness + $stateBusiness + $payrollTotal,
         ];
         $summary['effective_rate'] = $net > 0 ? round($summary['attributable'] / $net, 4) : null;
         $summary['set_aside_rate'] = $summary['effective_rate'];
@@ -637,7 +640,7 @@ class TaxEstimator
             $form === 'schedule_c' || $p['entity'] === 'partnership' ? 'The business is assumed to be an active trade or business with material participation.' : null,
             $p['sstb'] ? 'Treated as a specified service trade or business (consulting) for the QBI deduction.' : null,
             'Not modeled: capital gains and qualified dividends rates, AMT, the 3.8% net investment income tax, credits other than the child tax credit, local/city taxes, state modifications and credits, NOL carryovers, prior-year overpayments applied.',
-            'Withholding and estimated payments are as entered in tax settings; payments are not read from the ledger.',
+            'Balance due is the extra tax this business’s earnings add (return with vs without the business) minus estimated payments entered; W-2 withholding and tax on other income are not included. Payments are not read from the ledger.',
         ]));
     }
 

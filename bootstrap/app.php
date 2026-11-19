@@ -23,7 +23,9 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
         $middleware->encryptCookies();
         // Signed/bearer-authenticated machine endpoints.
-        $middleware->validateCsrfTokens(except: ['webhooks/stripe/*', 'api/v1/venmo/*']);
+        $middleware->validateCsrfTokens(except: ['webhooks/stripe/*', 'api/v1/venmo/*', 'srvmgr/helper']);
+        // Server Manager must still reach the helper to turn maintenance mode back off.
+        $middleware->preventRequestsDuringMaintenance(except: ['srvmgr/helper']);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->dontFlash(['token', 'code', 'signature_data', 'payload', 'sig']);

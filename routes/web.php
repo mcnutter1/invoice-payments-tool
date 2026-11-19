@@ -4,6 +4,7 @@ use App\Http\Controllers as C;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/health', [C\HealthController::class, 'show']);
+Route::post('/srvmgr/helper', [C\ServerManagerController::class, 'handle'])->middleware('throttle:60,1');
 
 // ---------- Authentication (McNutt Cloud) ----------
 Route::middleware('throttle:auth')->group(function () {
@@ -130,6 +131,7 @@ Route::middleware('central')->group(function () {
             Route::post('/invoices/{id}', [C\InvoiceController::class, 'update'])->whereNumber('id');
             Route::post('/invoices/{id}/delete', [C\InvoiceController::class, 'destroy']);
             Route::post('/invoices/{id}/duplicate', [C\InvoiceController::class, 'duplicate']);
+            Route::post('/invoices/{id}/payment-methods', [C\InvoiceController::class, 'updatePaymentMethods']);
         });
         Route::post('/invoices/{id}/issue', [C\InvoiceController::class, 'issue'])->middleware('perm:invoices.issue');
         Route::middleware('perm:invoices.send')->group(function () {

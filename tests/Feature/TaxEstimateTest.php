@@ -86,6 +86,24 @@ class TaxEstimateTest extends TestCase
         $this->assertSame('2027-01-15', $e['estimates']['federal']['installments'][3]['due']->toDateString());
     }
 
+    public function test_balance_due_counts_only_this_business_tax_not_w2_underpayment(): void
+    {
+        [$owner, $b, $client] = $this->business(['years' => [2026 => ['other_wages' => 8000000, 'fed_withholding' => 100000, 'state_withholding' => 50000,
+            'fed_estimates_paid' => 500000, 'state_estimates_paid' => 100000]]]);
+        $this->actingSystem($owner);
+        $this->paidInvoice($b, $client, '50000');
+
+        $e = app(TaxEstimator::class)->estimate($b, 2026);
+        $s = $e['summary'];
+        $fedBiz = $e['federal_total'] - $e['without_business']['total'];
+        $stateBiz = $e['state']['total'] - $e['state']['without'];
+        $this->assertSame($fedBiz + $stateBiz, $s['business_tax']);
+        $this->assertSame(600000, $s['paid']);
+        $this->assertSame($fedBiz - 500000 + $stateBiz - 100000, $s['balance']);
+        // The under-withheld W-2 tax is on the whole return but not in this business's balance.
+        $this->assertGreaterThan($s['business_tax'], $s['total']);
+    }
+
     public function test_open_and_recurring_invoices_project_into_the_year_on_cash_method(): void
     {
         [$owner, $b, $client] = $this->business(['doubtful_after_days' => 90]);

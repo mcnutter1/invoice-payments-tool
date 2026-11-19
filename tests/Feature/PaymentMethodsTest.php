@@ -115,6 +115,35 @@ class PaymentMethodsTest extends TestCase
         $this->get('/i/v/'.$inv->ulid)->assertSee('You reported a payment of $1,000.00 by ACH / wire transfer', false);
     }
 
+    public function test_sent_invoice_can_add_newly_enabled_payment_methods(): void
+    {
+        [$owner, $biz, $client] = $this->setup3();
+        $this->fakeStripe(fn () => null);
+        $this->actingSystem($owner);
+        $inv = $this->issue($biz, $client, ['zelle', 'check']);
+        $this->assertNotContains('ach', $inv->instructions_snapshot['methods']);
+
+        $this->saveAch($owner, $biz)->assertSessionHas('status');
+        $this->signIn($owner)->get("/b/{$biz->ulid}/invoices/{$inv->id}")->assertOk()->assertSee('1 new available');
+
+        $this->signIn($owner)->post("/b/{$biz->ulid}/invoices/{$inv->id}/payment-methods", ['payment_methods' => ['ach', 'zelle', 'check', 'card']])
+            ->assertSessionHas('status');
+        $inv->refresh();
+        $this->assertSame(['ach', 'zelle', 'check'], $inv->instructions_snapshot['methods']);
+        $this->assertSame('payment options updated', $inv->latestDocument()->reason);
+        $this->assertTrue(\App\Models\AuditEvent::where('action', 'invoice.payment_methods_updated')->exists());
+
+        $this->openAsClient($inv);
+        $this->get('/i/v/'.$inv->ulid)->assertOk()->assertSee('Bank transfer (ACH / wire)')->assertSee('123456789012');
+
+        $this->signIn($owner)->post("/b/{$biz->ulid}/invoices/{$inv->id}/payment-methods", ['payment_methods' => ['card']])
+            ->assertSessionHas('error');
+        $this->actingSystem($owner);
+        app(PaymentService::class)->record($biz, ['client_id' => $client->id, 'method' => 'check', 'amount_cents' => 100000, 'received_date' => now()->toDateString()], [$inv->id => 100000]);
+        $this->signIn($owner)->post("/b/{$biz->ulid}/invoices/{$inv->id}/payment-methods", ['payment_methods' => ['zelle']])
+            ->assertSessionHas('error');
+    }
+
     public function test_client_level_methods_limit_invoice_options(): void
     {
         [$owner, $biz, $client] = $this->setup3();

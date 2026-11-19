@@ -191,6 +191,39 @@
             </dl>
             @if ($invoice->internal_notes)<p class="mt-3 rounded bg-amber-50 p-2 text-xs text-amber-900"><strong>Internal:</strong> {{ $invoice->internal_notes }}</p>@endif
         </div>
+        @if ($invoice->isIssued() && $invoice->balance_cents > 0 && $ctx->can('invoices.manage'))
+        @php
+            $current = $invoice->instructions_snapshot['methods'] ?? [];
+            $available = \App\Support\PaymentMethods::forClient($biz, $invoice->client);
+            $missing = array_diff($available, $current);
+        @endphp
+        <details class="card group" id="payment-options" @if($missing || $errors->has('payment_methods')) open @endif>
+            <summary class="card-head cursor-pointer list-none">
+                <h2>Payment options</h2>
+                @if ($missing)<span class="chip chip-blue">{{ count($missing) }} new available</span>@else<span class="text-xs text-slate-500 group-open:hidden">Change</span>@endif
+            </summary>
+            <form method="post" action="{{ $bu }}/invoices/{{ $invoice->id }}/payment-methods" class="card-body space-y-3 text-sm"
+                  data-confirm="Update the payment options on {{ $invoice->number }}? The client's link and PDF will show the selected methods with your current payment details.">@csrf
+                @if ($missing)
+                    <p class="text-slate-600">This invoice was sent before {{ collect($missing)->map(fn ($m) => \App\Support\PaymentMethods::label($m))->implode(', ') }} {{ count($missing) > 1 ? 'were' : 'was' }} set up. Add {{ count($missing) > 1 ? 'them' : 'it' }} so the client can pay that way.</p>
+                @endif
+                <div class="space-y-2">
+                    @foreach (\App\Support\PaymentMethods::ordered(array_merge($available, $current)) as $m)
+                        @php $usable = in_array($m, $available, true); @endphp
+                        <label class="flex items-center gap-2">
+                            <input class="check" type="checkbox" name="payment_methods[]" value="{{ $m }}" @checked(in_array($m, old('payment_methods', $current), true)) @disabled(! $usable)>
+                            {{ \App\Support\PaymentMethods::label($m) }}
+                            @if (! in_array($m, $current, true))<span class="chip chip-blue">New</span>@endif
+                            @unless ($usable)<span class="text-xs text-slate-500">(no longer enabled)</span>@endunless
+                        </label>
+                    @endforeach
+                </div>
+                @error('payment_methods')<p class="field-error">{{ $message }}</p>@enderror
+                <button class="btn btn-sm">Update payment options</button>
+                <p class="hint">Payment details (bank, Zelle, Venmo, check address) are refreshed from Settings. A new PDF version is saved; the client’s existing link keeps working.</p>
+            </form>
+        </details>
+        @endif
         @if ($invoice->documentVersions->isNotEmpty())
         <div class="card"><div class="card-head"><h2>PDF versions</h2></div><ul class="card-body space-y-1 text-sm">
             @foreach ($invoice->documentVersions as $v)<li><a href="{{ $bu }}/invoices/{{ $invoice->id }}/documents/{{ $v->version }}">Version {{ $v->version }}</a> · {{ $v->reason }} · <span class="font-mono text-xs text-slate-500" title="SHA-256">{{ substr($v->sha256, 0, 12) }}…</span></li>@endforeach
