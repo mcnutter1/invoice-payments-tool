@@ -102,6 +102,13 @@ class TaxEstimateTest extends TestCase
         $this->assertSame($fedBiz - 500000 + $stateBiz - 100000, $s['balance']);
         // The under-withheld W-2 tax is on the whole return but not in this business's balance.
         $this->assertGreaterThan($s['business_tax'], $s['total']);
+
+        // Whole return: business + W-2 tax, less withholding and estimates, per jurisdiction.
+        $fed = $e['settlement']['federal'];
+        $this->assertSame($e['federal_total'], $fed['total']);
+        $this->assertSame($e['federal_total'] - 100000 - 500000, $fed['balance']);
+        $this->assertSame($e['state']['total'] - 50000 - 100000, $e['settlement']['state']['balance']);
+        $this->assertSame($fed['balance'] + $e['settlement']['state']['balance'], $s['return_balance']);
     }
 
     public function test_open_and_recurring_invoices_project_into_the_year_on_cash_method(): void
@@ -202,7 +209,7 @@ class TaxEstimateTest extends TestCase
         $this->paidInvoice($b, $client, '90000');
         $bu = '/b/'.$b->ulid;
         $this->signIn($owner)->get($bu.'/reports')->assertOk()->assertSee('Tax estimate');
-        $this->signIn($owner)->get($bu.'/reports/tax-estimate')->assertOk()->assertSee('Schedule C (Form 1040)')->assertSee('Self-employment tax')->assertSee('New Jersey Gross Income Tax');
+        $this->signIn($owner)->get($bu.'/reports/tax-estimate')->assertOk()->assertSee('Schedule C (Form 1040)')->assertSee('Self-employment tax')->assertSee('New Jersey Gross Income Tax')->assertSee('Owed or refunded');
         $this->signIn($owner)->post($bu.'/reports/tax-estimate', ['year' => 2026, 'entity' => 'partnership', 'filing_status' => 'mfj', 'state' => 'nj', 'tax_method' => 'cash',
             'ownership_pct' => 50, 'owner_count' => 2, 'dependents' => 1, 'doubtful_after_days' => 90, 'fed_estimates_paid' => '4000', 'partner_se' => 1])->assertRedirect();
         $p = TaxProfile::get($b->fresh(), 2026);

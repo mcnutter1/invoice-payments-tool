@@ -175,6 +175,18 @@ class TaxEstimator
         $summary['effective_rate'] = $net > 0 ? round($summary['attributable'] / $net, 4) : null;
         $summary['set_aside_rate'] = $summary['effective_rate'];
 
+        // Whole-return view: business + W-2/other income, less withholding and estimates → owed or refunded.
+        $settle = fn (int $business, int $other, int $withheld, int $estimates) => [
+            'business' => $business, 'other' => $other, 'total' => $business + $other,
+            'withholding' => $withheld, 'estimates' => $estimates, 'balance' => $business + $other - $withheld - $estimates,
+        ];
+        $settlement = [
+            'federal' => $settle($fedBusiness, $p['entity'] === 'c_corp' ? $owner['total'] : $without['total'], $p['fed_withholding'], $p['fed_estimates_paid']),
+            'state' => $settle($stateBusiness, $p['entity'] === 'c_corp' ? 0 : (int) ($state['without'] ?? 0), $p['state_withholding'], $p['state_estimates_paid']),
+        ];
+        $summary['return_total'] = $settlement['federal']['total'] + $settlement['state']['total'];
+        $summary['return_balance'] = $settlement['federal']['balance'] + $settlement['state']['balance'];
+
         if (! $p['configured']) $warnings[] = 'Tax settings have not been reviewed yet — entity type was inferred from the W-9 settings. Confirm the settings below.';
         if ($books['uncategorized']) $warnings[] = 'Some expenses are in "Other" categories; review the deduction mapping before filing.';
         if ($p['entity'] === 's_corp' && $p['officer_salary'] <= 0 && $net > 0) $warnings[] = 'S corporation with no officer salary: the IRS expects reasonable compensation before distributions.';
@@ -189,7 +201,7 @@ class TaxEstimator
             'payroll' => $payroll, 'state' => $state,
             'estimates' => ['federal' => $fedEst, 'state' => $stEst],
             'filing' => $this->filingDates($year, $form, $p['entity']),
-            'summary' => $summary, 'warnings' => $warnings,
+            'summary' => $summary, 'settlement' => $settlement, 'warnings' => $warnings,
             'assumptions' => $this->assumptions($p, $form),
         ];
     }

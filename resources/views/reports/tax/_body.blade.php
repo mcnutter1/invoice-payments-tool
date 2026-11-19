@@ -8,14 +8,15 @@
 @endphp
 
 <section class="grid grid-cols-2 gap-3 lg:grid-cols-4">
-    <div class="metric"><div class="metric-label">Tax from this business {{ $e['year'] }}</div><div class="metric-value">{{ $M($s['business_tax']) }}</div>
-        <div class="metric-note">Federal {{ $M($s['business_federal']) }} · State {{ $M($s['business_state']) }}@if($s['payroll']) · plus payroll {{ $M($s['payroll']) }}@endif<br>Whole return {{ $M($s['total']) }}</div></div>
     <div class="metric"><div class="metric-label">Net business income (tax basis)</div><div class="metric-value">{{ $M($s['net_business_income']) }}</div>
         <div class="metric-note">{{ $e['projecting'] ? 'Actual to '.$e['as_of']->format('M j').' + expected to Dec 31' : 'Full year actual' }}</div></div>
-    <div class="metric"><div class="metric-label">Estimates paid</div><div class="metric-value">{{ $M($s['paid']) }}</div><div class="metric-note">Federal + state estimated payments entered</div></div>
-    <div class="metric"><div class="metric-label">{{ $s['balance'] >= 0 ? 'Estimated balance due' : 'Estimated overpayment' }}</div>
-        <div @class(['metric-value', 'text-red-700' => $s['balance'] > 0, 'text-emerald-700' => $s['balance'] < 0])>{{ $M(abs($s['balance'])) }}</div>
-        <div class="metric-note">Extra tax from this business’s earnings only — excludes W-2 withholding and other income.@if ($s['effective_rate'] !== null) Set aside ≈ {{ round($s['effective_rate'] * 100, 1) }}% of business profit.@endif</div></div>
+    <div class="metric"><div class="metric-label">Tax from this business {{ $e['year'] }}</div><div class="metric-value">{{ $M($s['business_tax']) }}</div>
+        <div class="metric-note">Estimates paid {{ $M($s['paid']) }} · {{ $s['balance'] >= 0 ? 'still to set aside '.$M($s['balance']) : 'ahead by '.$M(-$s['balance']) }}@if ($s['effective_rate'] !== null)<br>≈ {{ round($s['effective_rate'] * 100, 1) }}% of business profit @endif</div></div>
+    <div class="metric"><div class="metric-label">Total tax — whole return</div><div class="metric-value">{{ $M($s['return_total']) }}</div>
+        <div class="metric-note">Federal {{ $M($e['settlement']['federal']['total']) }} · State {{ $M($e['settlement']['state']['total']) }} · incl. W-2 &amp; other income@if($s['payroll'])<br>Payroll {{ $M($s['payroll']) }} paid separately @endif</div></div>
+    <div class="metric"><div class="metric-label">{{ $s['return_balance'] >= 0 ? 'Owed with the return' : 'Expected refund' }}</div>
+        <div @class(['metric-value', 'text-red-700' => $s['return_balance'] > 0, 'text-emerald-700' => $s['return_balance'] < 0])>{{ $M(abs($s['return_balance'])) }}</div>
+        <div class="metric-note">After withholding and estimated payments · see <a href="#settlement">owed or refunded</a></div></div>
 </section>
 
 @if ($e['warnings'])
@@ -101,8 +102,31 @@
 </section>
 @endif
 
+@php
+    $fed = $e['settlement']['federal'];
+    $stS = $e['settlement']['state'];
+    $owed = fn ($v) => $v >= 0 ? $M($v) : '('.$M(-$v).')';
+@endphp
+<section class="card mt-4 scroll-mt-4" id="settlement">
+    <div class="card-head"><h2>7 · Owed or refunded — whole return</h2><span class="text-xs text-slate-500">Business + W-2 and other income, less what’s been paid</span></div>
+    <table class="tbl"><thead><tr><th></th><th class="num">Federal</th><th class="num">State ({{ $e['state']['name'] }})</th><th class="num">Total</th></tr></thead><tbody>
+        @foreach ([
+            'other' => $e['corporate'] ? 'Owner’s personal tax on salary & other income' : 'Tax on W-2 wages & other income (without the business)',
+            'business' => $e['corporate'] ? 'Corporate tax' : 'Extra tax from this business',
+        ] as $k => $label)
+            <tr><td>{{ $label }}</td><td class="num">{{ $M($fed[$k]) }}</td><td class="num">{{ $M($stS[$k]) }}</td><td class="num">{{ $M($fed[$k] + $stS[$k]) }}</td></tr>
+        @endforeach
+        <tr class="total"><td class="font-semibold">Total tax</td><td class="num font-semibold">{{ $M($fed['total']) }}</td><td class="num font-semibold">{{ $M($stS['total']) }}</td><td class="num font-semibold">{{ $M($fed['total'] + $stS['total']) }}</td></tr>
+        <tr><td>Less: withholding (W-2 / payroll)</td><td class="num">−{{ $M($fed['withholding']) }}</td><td class="num">−{{ $M($stS['withholding']) }}</td><td class="num">−{{ $M($fed['withholding'] + $stS['withholding']) }}</td></tr>
+        <tr><td>Less: estimated payments</td><td class="num">−{{ $M($fed['estimates']) }}</td><td class="num">−{{ $M($stS['estimates']) }}</td><td class="num">−{{ $M($fed['estimates'] + $stS['estimates']) }}</td></tr>
+        <tr class="total"><td class="font-semibold">Owed / (refund)</td>
+            @foreach ([$fed['balance'], $stS['balance'], $fed['balance'] + $stS['balance']] as $v)<td @class(['num font-semibold', 'text-red-700' => $v > 0, 'text-emerald-700' => $v < 0])>{{ $owed($v) }}</td>@endforeach</tr>
+    </tbody></table>
+    <p class="hint px-4 pb-4 sm:px-5">Withholding and estimated payments are the amounts entered in tax settings. Parentheses mean a refund.@if($s['payroll']) Payroll taxes ({{ $M($s['payroll']) }}) are paid through payroll and not included.@endif</p>
+</section>
+
 <section class="card mt-4">
-    <div class="card-head"><h2>7 · Estimated payments &amp; deadlines</h2></div>
+    <div class="card-head"><h2>8 · Estimated payments &amp; deadlines</h2></div>
     <div class="card-body grid gap-6 text-sm lg:grid-cols-2">
         @foreach (['federal' => 'Federal (Form '.($e['corporate'] ? '1120-W' : '1040-ES').')', 'state' => 'State'] as $k => $label)
             @php $est = $e['estimates'][$k]; @endphp

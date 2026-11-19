@@ -96,6 +96,11 @@ class TaxReportController extends Controller
         $section('State — '.$e['state']['name'], $e['state']['lines']);
         $rows[] = ['Summary'];
         foreach (['federal' => 'Federal (whole return)', 'state' => 'State (whole return)', 'payroll' => 'Payroll', 'total' => 'Total (whole return)', 'business_tax' => 'Tax from this business', 'paid' => 'Estimates paid', 'balance' => 'Balance due (this business)'] as $k => $l) $rows[] = [$l, $m((int) $e['summary'][$k])];
+        $rows[] = [];
+        $rows[] = ['Owed or refunded (whole return)', 'Federal', 'State'];
+        foreach (['other' => 'Tax on W-2 wages & other income', 'business' => 'Tax from this business', 'total' => 'Total tax', 'withholding' => 'Withholding', 'estimates' => 'Estimated payments', 'balance' => 'Owed (negative = refund)'] as $k => $l) {
+            $rows[] = [$l, $m((int) $e['settlement']['federal'][$k]), $m((int) $e['settlement']['state'][$k])];
+        }
         foreach ($e['warnings'] as $w) $rows[] = ['Warning', $w];
         $out = fopen('php://temp', 'r+');
         foreach ($rows as $r) fputcsv($out, array_map(fn ($v) => is_string($v) && preg_match('/^[=+\-@\t\r]/', $v) && ! is_numeric($v) ? "'".$v : $v, $r), ',', '"', '\\');
