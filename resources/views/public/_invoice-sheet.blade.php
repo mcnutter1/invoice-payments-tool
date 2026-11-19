@@ -72,7 +72,7 @@
     </section>
 
     @if ($openClaim)
-        <div class="alert alert-info mx-5 mt-5 sm:mx-10"><strong>Payment reported — awaiting confirmation.</strong> You reported a {{ $openClaim->method === 'zelle' ? 'Zelle' : 'check' }} payment of {{ $M($openClaim->reported_amount_cents) }} on {{ $openClaim->reported_date->format('M j') }}. {{ $business['name'] }} will confirm once it arrives.</div>
+        <div class="alert alert-info mx-5 mt-5 sm:mx-10"><strong>Payment reported — awaiting confirmation.</strong> You reported a payment of {{ $M($openClaim->reported_amount_cents) }} by {{ \App\Support\PaymentMethods::label($openClaim->method) }} on {{ $openClaim->reported_date->format('M j') }}. {{ $business['name'] }} will confirm once it arrives.</div>
     @endif
 
     <section class="mt-8 px-5 sm:px-10">

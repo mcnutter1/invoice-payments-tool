@@ -72,7 +72,8 @@ class RecurringController extends Controller
             'auto_send' => ['nullable', 'boolean'],
             'recipients' => ['nullable', 'string', 'max:1000'],
             'payment_methods' => ['nullable', 'array'],
-            'payment_methods.*' => [Rule::in(['zelle', 'check'])],
+            'payment_methods.*' => [Rule::in(\App\Support\PaymentMethods::INVOICE)],
+            'card_autopay' => ['nullable', 'boolean'],
             'customer_note' => ['nullable', 'string', 'max:5000'],
             'price_policy' => ['nullable', Rule::in(['snapshot', 'catalog'])],
             'require_signed_contract' => ['nullable', 'boolean'],
@@ -122,6 +123,16 @@ class RecurringController extends Controller
         $this->service->save($this->biz(), $s, $data);
 
         return $this->to('/recurring/'.$id, 'Schedule updated. Changes apply to future periods only.');
+    }
+
+    public function removeAutopay(int $id)
+    {
+        $s = $this->schedule($id);
+        $label = $s->autopay_card_label;
+        $s->forceFill(['stripe_payment_method_id' => null, 'autopay_card_label' => null, 'autopay_authorized_at' => null, 'autopay_authorized_email' => null])->save();
+        \App\Services\Audit::log($this->biz(), 'schedule.autopay_removed', $s, ['card' => $label]);
+
+        return back()->with('status', 'Saved card removed. Future invoices will be emailed for payment; the client can save a new card when paying.');
     }
 
     public function status(Request $request, int $id)

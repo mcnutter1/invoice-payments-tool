@@ -58,7 +58,11 @@
         </fieldset>
         <div class="space-y-2">
             @include('partials.recipient-picker', ['id' => 'recipients', 'options' => $curClient?->recipientOptions() ?? [], 'selected' => old('recipients', $schedule?->recipients ?? []), 'defaultBilling' => ! $schedule, 'clientSelect' => '#client_id', 'hint' => 'Used when invoices are emailed automatically. Each recipient gets their own secure link.'])
-            <fieldset><legend class="label">Payment methods</legend>@foreach ($biz->allowedMethods() as $m)<label class="mr-4 inline-flex items-center gap-2 text-sm"><input class="check" type="checkbox" name="payment_methods[]" value="{{ $m }}" @checked(in_array($m, $methods, true))> {{ $m === 'zelle' ? 'Zelle' : 'Check' }}</label>@endforeach</fieldset>
+            <fieldset><legend class="label">Payment options</legend><div class="flex flex-wrap gap-x-5 gap-y-2">@foreach ($biz->allowedMethods() as $m)<label class="inline-flex items-center gap-2 text-sm"><input class="check" type="checkbox" name="payment_methods[]" value="{{ $m }}" @checked(in_array($m, $methods, true))> {{ \App\Support\PaymentMethods::label($m) }}</label>@endforeach</div></fieldset>
+            @if (in_array('card', $biz->allowedMethods(), true))
+                <label class="flex items-start gap-2 text-sm"><input type="hidden" name="card_autopay" value="0"><input class="check mt-0.5" type="checkbox" name="card_autopay" value="1" @checked(old('card_autopay', $schedule?->card_autopay))> <span>Offer card autopay — when the client pays by card they can save it, and each new invoice in this schedule is charged automatically when issued. <span class="text-slate-500">Requires automatic issuing and card payments.</span></span></label>
+                @if ($schedule?->stripe_payment_method_id)<p class="hint">Saved card: {{ $schedule->autopay_card_label }} (authorized {{ $schedule->autopay_authorized_at?->timezone($biz->timezone)->format('M j, Y') }}). Unchecking removes it.</p>@endif
+            @endif
         </div>
         <div class="sm:col-span-2"><label class="label" for="customer_note">Note on each invoice</label><textarea class="input" id="customer_note" name="customer_note" rows="2">{{ old('customer_note', $schedule?->customer_note) }}</textarea></div>
         @if ($schedule)<div class="sm:col-span-2"><label class="label" for="change_reason">Reason for change (audit)</label><input class="input" id="change_reason" name="change_reason"></div>@endif

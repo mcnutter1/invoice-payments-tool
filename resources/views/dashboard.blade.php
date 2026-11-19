@@ -39,7 +39,7 @@
     }
     $agingTones = ['current' => 'bg-emerald-500', 'late1' => 'bg-amber-400', 'late2' => 'bg-orange-500', 'late3' => 'bg-red-500', 'late4' => 'bg-red-700'];
     $upNext = collect()
-        ->concat($claims->take(4)->map(fn ($c) => ['dot' => 'bg-amber-400', 'title' => 'Payment reported · '.$c->invoice->client->display_name, 'sub' => $c->invoice->number.' · '.ucfirst($c->method), 'meta' => Money::format($c->reported_amount_cents), 'href' => $bu.'/claims/'.$c->id]))
+        ->concat($claims->take(4)->map(fn ($c) => ['dot' => 'bg-amber-400', 'title' => 'Payment reported · '.$c->invoice->client->display_name, 'sub' => $c->invoice->number.' · '.\App\Support\PaymentMethods::label($c->method), 'meta' => Money::format($c->reported_amount_cents), 'href' => $bu.'/claims/'.$c->id]))
         ->concat($awaitingSignature->take(4)->map(fn ($c) => ['dot' => 'bg-violet-500', 'title' => 'Awaiting signature · '.$c->title, 'sub' => $c->client->display_name.' · '.$c->number, 'meta' => str_replace('_', ' ', $c->status), 'href' => $bu.'/contracts/'.$c->id]))
         ->concat($dueSoon->take(4)->map(fn ($s) => ['dot' => 'bg-sky-500', 'title' => $s->name, 'sub' => $s->client->display_name.' · recurring invoice', 'meta' => $s->next_run_date?->format('M j'), 'href' => $bu.'/recurring/'.$s->id]))
         ->take(7);

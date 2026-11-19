@@ -22,6 +22,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'public.doc' => \App\Http\Middleware\PublicDocumentHeaders::class,
         ]);
         $middleware->encryptCookies();
+        // Signed/bearer-authenticated machine endpoints.
+        $middleware->validateCsrfTokens(except: ['webhooks/stripe/*', 'api/v1/venmo/*']);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->dontFlash(['token', 'code', 'signature_data', 'payload', 'sig']);

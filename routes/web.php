@@ -20,6 +20,10 @@ Route::middleware('throttle:tracking')->group(function () {
     Route::get('/brand/{ulid}/logo', [C\EmailAssetController::class, 'logo'])->where('ulid', '[0-9A-Za-z]{26}');
 });
 
+// ---------- Payment processor callbacks (signature / bearer token auth) ----------
+Route::post('/webhooks/stripe/{ulid}', [C\PaymentWebhookController::class, 'stripe'])->where('ulid', '[0-9A-Za-z]{26}')->middleware('throttle:120,1');
+Route::post('/api/v1/venmo/payments', [C\PaymentWebhookController::class, 'venmo'])->middleware('throttle:60,1');
+
 // ---------- Public client pages (no account) ----------
 Route::middleware(['public.doc', 'throttle:public'])->group(function () {
     Route::get('/i/{token}', [C\PublicInvoiceController::class, 'exchange'])->middleware('throttle:public-token')->where('token', '[A-Za-z0-9_-]{40,64}');
@@ -32,6 +36,8 @@ Route::middleware(['public.doc', 'throttle:public'])->group(function () {
     Route::get('/i/v/{ulid}/agreement', [C\PublicInvoiceController::class, 'agreement']);
     Route::get('/i/v/{ulid}/agreement/certificate', [C\PublicInvoiceController::class, 'agreementCertificate']);
     Route::post('/i/v/{ulid}/report-payment', [C\PublicInvoiceController::class, 'reportPayment'])->middleware('throttle:public-write');
+    Route::post('/i/v/{ulid}/card', [C\PublicInvoiceController::class, 'cardCheckout'])->middleware('throttle:public-write');
+    Route::get('/i/v/{ulid}/card/return', [C\PublicInvoiceController::class, 'cardReturn']);
     Route::post('/i/v/{ulid}/w9', [C\PublicW9Controller::class, 'requestFromInvoice'])->middleware('throttle:public-write');
     Route::post('/i/v/{ulid}/w9/download', [C\PublicW9Controller::class, 'downloadFromInvoice'])->middleware('throttle:public-write');
     Route::get('/w9/{token}', [C\PublicW9Controller::class, 'show'])->middleware('throttle:public-token')->where('token', '[A-Za-z0-9_-]{40,64}');
@@ -69,6 +75,10 @@ Route::middleware('central')->group(function () {
     Route::post('/platform/mileage-rates', [C\PlatformMileageController::class, 'store']);
     Route::post('/platform/mileage-rates/sync', [C\PlatformMileageController::class, 'sync'])->middleware('throttle:sensitive');
     Route::post('/platform/mileage-rates/{id}/delete', [C\PlatformMileageController::class, 'destroy'])->whereNumber('id');
+    Route::get('/platform/tax-tables', [C\PlatformTaxTableController::class, 'index']);
+    Route::post('/platform/tax-tables', [C\PlatformTaxTableController::class, 'import'])->middleware('central:fresh');
+    Route::post('/platform/tax-tables/sync', [C\PlatformTaxTableController::class, 'sync'])->middleware('throttle:sensitive');
+    Route::post('/platform/tax-tables/{id}/delete', [C\PlatformTaxTableController::class, 'destroy'])->whereNumber('id')->middleware('central:fresh');
     Route::post('/platform/role-mappings/{id}/delete', [C\PlatformController::class, 'deleteMapping'])->middleware('central:fresh');
 
     Route::prefix('/b/{business}')->middleware('business')->group(function () {
@@ -153,6 +163,8 @@ Route::middleware('central')->group(function () {
             Route::post('/payments/{id}/apply', [C\PaymentController::class, 'apply']);
             Route::post('/payments/{id}/deposit', [C\PaymentController::class, 'deposit']);
             Route::post('/payments/{id}/clear', [C\PaymentController::class, 'clear']);
+            Route::post('/payments/{id}/fee', [C\PaymentController::class, 'addFee']);
+            Route::post('/invoices/{id}/charge-card', [C\InvoiceController::class, 'chargeCard'])->middleware(['central:fresh', 'throttle:sensitive']);
         });
         Route::middleware('perm:payments.confirm')->group(function () {
             Route::post('/claims/{id}/confirm', [C\PaymentController::class, 'confirmClaim'])->middleware('central:fresh');
@@ -181,6 +193,7 @@ Route::middleware('central')->group(function () {
             Route::post('/expenses/{id}', [C\ExpenseController::class, 'update'])->whereNumber('id');
             Route::get('/expenses/import', [C\ExpenseImportController::class, 'index']);
             Route::post('/expenses/import', [C\ExpenseImportController::class, 'upload'])->middleware('throttle:sensitive');
+            Route::post('/expenses/import/subscriptions', [C\ExpenseImportController::class, 'pullSubscriptions'])->middleware('throttle:sensitive');
             Route::get('/expenses/import/{ulid}', [C\ExpenseImportController::class, 'review']);
             Route::post('/expenses/import/{ulid}', [C\ExpenseImportController::class, 'commit']);
             Route::post('/expenses/imports/{id}/undo', [C\ExpenseImportController::class, 'undo'])->whereNumber('id');
@@ -245,6 +258,8 @@ Route::middleware('central')->group(function () {
 
         // Reports
         Route::get('/reports', [C\ReportController::class, 'index'])->middleware('perm:reports.ar.view|reports.pnl.view');
+        Route::get('/reports/tax-estimate', [C\TaxReportController::class, 'show'])->middleware('perm:reports.pnl.view');
+        Route::post('/reports/tax-estimate', [C\TaxReportController::class, 'saveProfile'])->middleware('perm:business.manage');
         Route::get('/reports/{report}', [C\ReportController::class, 'show'])->middleware('perm:reports.ar.view|reports.pnl.view');
 
         // Contracts
@@ -298,6 +313,7 @@ Route::middleware('central')->group(function () {
             Route::get('/recurring/{id}/edit', [C\RecurringController::class, 'edit']);
             Route::post('/recurring/{id}', [C\RecurringController::class, 'update'])->whereNumber('id');
             Route::post('/recurring/{id}/status', [C\RecurringController::class, 'status']);
+            Route::post('/recurring/{id}/autopay/remove', [C\RecurringController::class, 'removeAutopay']);
             Route::post('/schedule-runs/{id}/generate', [C\RecurringController::class, 'generateRun']);
             Route::post('/schedule-runs/{id}/skip', [C\RecurringController::class, 'skipRun']);
         });
@@ -312,6 +328,9 @@ Route::middleware('central')->group(function () {
             Route::get('/settings/w9/preview', [C\W9Controller::class, 'preview']);
             Route::post('/settings/branding', [C\SettingsController::class, 'updateBranding']);
             Route::post('/settings/payments', [C\SettingsController::class, 'updatePayments'])->middleware('central:fresh');
+            Route::post('/settings/stripe', [C\SettingsController::class, 'updateStripe'])->middleware(['central:fresh', 'throttle:sensitive']);
+            Route::post('/settings/venmo-token', [C\SettingsController::class, 'venmoToken'])->middleware(['central:fresh', 'throttle:sensitive']);
+            Route::get('/settings/bank-lookup', [C\SettingsController::class, 'bankLookup'])->middleware('throttle:30,1');
             Route::post('/settings/email', [C\SettingsController::class, 'updateEmail']);
             Route::post('/settings/email/test', [C\SettingsController::class, 'testEmail'])->middleware('throttle:sensitive');
             Route::get('/settings/preview-pdf', [C\SettingsController::class, 'previewPdf']);

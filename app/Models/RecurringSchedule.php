@@ -23,7 +23,14 @@ class RecurringSchedule extends Model
         'recipients' => 'array',
         'payment_methods' => 'array',
         'last_run_at' => 'datetime',
+        'card_autopay' => 'boolean',
+        'autopay_authorized_at' => 'datetime',
     ];
+
+    public function hasAutopay(): bool
+    {
+        return $this->card_autopay && $this->stripe_payment_method_id && $this->status === 'active';
+    }
 
     public function client(): BelongsTo { return $this->belongsTo(Client::class); }
     public function contract(): BelongsTo { return $this->belongsTo(Contract::class); }

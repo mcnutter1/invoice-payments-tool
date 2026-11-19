@@ -52,12 +52,16 @@ class RecurringService
                 'auto_issue' => ! empty($data['auto_issue']),
                 'auto_send' => ! empty($data['auto_send']) && ! empty($data['auto_issue']),
                 'recipients' => array_values(array_filter(array_map('trim', explode(',', (string) ($data['recipients'] ?? ''))))),
-                'payment_methods' => $data['payment_methods'] ?? $business->allowedMethods(),
+                'payment_methods' => $methods = \App\Support\PaymentMethods::forInvoice($business, $client, $data['payment_methods'] ?? null),
+                'card_autopay' => ! empty($data['card_autopay']) && in_array('card', $methods, true),
                 'customer_note' => $data['customer_note'] ?? null,
                 'price_policy' => ($data['price_policy'] ?? null) === 'catalog' ? 'catalog' : 'snapshot',
                 'require_signed_contract' => $contract ? ! empty($data['require_signed_contract'] ?? true) : false,
             ];
             if ($schedule) {
+                if (! $attrs['card_autopay'] && $schedule->stripe_payment_method_id) {
+                    $attrs += ['stripe_payment_method_id' => null, 'autopay_card_label' => null, 'autopay_authorized_at' => null, 'autopay_authorized_email' => null];
+                }
                 $before = $schedule->only(array_keys($attrs));
                 $schedule->fill($attrs);
                 $schedule->save();
@@ -190,8 +194,32 @@ class RecurringService
             $s->last_run_at = now();
             $s->save();
         });
+        // Card charges run after commit so a processor call never holds the schedule lock.
+        foreach ($created as $invoice) {
+            $this->autopay($invoice);
+        }
 
         return $stats;
+    }
+
+    private function autopay(Invoice $invoice): void
+    {
+        $s = RecurringSchedule::find($invoice->recurring_schedule_id);
+        if (! $invoice->isIssued() || ! $s?->hasAutopay()) return;
+        $paid = null;
+        try {
+            $paid = app(\App\Services\Payments\StripePayments::class)->chargeAutopay($invoice);
+        } catch (\Throwable $e) {
+            Log::error('recurring.autopay_failed', ['invoice' => $invoice->id, 'error' => $e->getMessage()]);
+        }
+        if (! $paid && $s->auto_send) {
+            try {
+                $this->email->queueInvoice($invoice->fresh(), $invoice->recipients ?? [], 'invoice',
+                    'We weren’t able to charge your saved card for this invoice. Please pay using the link below — you can use a different card or another payment option.');
+            } catch (\Throwable $e) {
+                Log::error('recurring.autopay_notice_failed', ['invoice' => $invoice->id, 'error' => $e->getMessage()]);
+            }
+        }
     }
 
     private function generate(RecurringSchedule $s, Carbon $period, Business $business, bool $automatic): ?Invoice
@@ -231,7 +259,7 @@ class RecurringService
         ]);
         if ($s->auto_issue && $automatic) {
             $invoice = $this->invoices->issue($invoice);
-            if ($s->auto_send) {
+            if ($s->auto_send && ! $s->hasAutopay()) {
                 $this->email->queueInvoice($invoice, $invoice->recipients ?? []);
             }
         }

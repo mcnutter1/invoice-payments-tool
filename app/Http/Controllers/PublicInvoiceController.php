@@ -95,13 +95,19 @@ class PublicInvoiceController extends Controller
             ? ContractVersion::where('business_id', $invoice->business_id)->where('id', $invoice->contract_version_id)->where('status', 'completed')->first()
             : null;
         $suppressed = $claims->where('status', 'reported')->first(fn ($c) => $c->created_at->gt(now()->subDays($business->claim_review_days)));
+        $stripe = app(\App\Services\Payments\StripePayments::class);
+        $reportable = array_values(array_intersect($vm['instructions']['methods'] ?? [], \App\Support\PaymentMethods::MANUAL));
 
         return view('public.invoice', $vm + [
             'claims' => $claims,
             'openClaim' => $claims->firstWhere('status', 'reported'),
             'agreement' => $agreement,
             'agreementTitle' => $invoice->contractVersion?->title ?? $invoice->contract?->title,
-            'canReport' => $t->allows('report_payment') && $invoice->status === 'issued' && $invoice->balance_cents > 0,
+            'canReport' => $t->allows('report_payment') && $invoice->status === 'issued' && $invoice->balance_cents > 0 && $reportable,
+            'reportMethods' => $reportable,
+            'reportMethod' => in_array($request->query('method'), $reportable, true) ? $request->query('method') : null,
+            'autopayOffer' => $stripe->offersAutopay($invoice),
+            'autopay' => $invoice->schedule?->hasAutopay() ? $invoice->schedule : null,
             'reviewing' => (bool) $suppressed,
             'openReport' => $request->boolean('report'),
             'w9Available' => $invoice->status === 'issued' && ($w9 = app(\App\Services\Tax\W9Service::class))->settings($business)['allow_client_requests'] && $w9->ready($business),
@@ -125,7 +131,7 @@ class PublicInvoiceController extends Controller
         if (! $invoice) return response()->noContent(404);
         $data = $request->validate([
             'event' => ['required', Rule::in(['payment_details_copied'])],
-            'detail' => ['nullable', Rule::in(['zelle_email', 'zelle_mobile', 'amount', 'memo'])],
+            'detail' => ['nullable', Rule::in(['zelle_email', 'zelle_mobile', 'amount', 'memo', 'ach_routing', 'ach_wire_routing', 'ach_account', 'ach_name', 'ach_swift', 'venmo_handle', 'venmo_open'])],
         ]);
         $this->log($t, $data['event'], $request, null, $data['detail'] ?? null);
 
@@ -192,11 +198,47 @@ class PublicInvoiceController extends Controller
         return $this->agreementDoc($request, $ulid, 'certificate', $docs);
     }
 
+    /** Start a hosted Stripe Checkout for the open balance. */
+    public function cardCheckout(Request $request, string $ulid, \App\Services\Payments\StripePayments $stripe)
+    {
+        [$invoice, $t] = $this->resolve($request, $ulid);
+        if (! $invoice || $invoice->status !== 'issued' || ! in_array('card', $invoice->instructions_snapshot['methods'] ?? [], true)) return $this->notFound();
+        try {
+            $url = $stripe->checkoutUrl($invoice, $t->recipient_email, $request->boolean('save_card'));
+        } catch (\App\Services\Payments\StripeError $e) {
+            report($e);
+
+            return redirect('/i/v/'.$invoice->ulid.'#howtopay')->with('error', 'Card payments are temporarily unavailable. Please try again shortly or choose another payment option.');
+        }
+        $this->log($t, 'pay_clicked', $request, null, 'card');
+
+        return redirect()->away($url, 303);
+    }
+
+    /** Back from Stripe: verify the session server-side before showing success. */
+    public function cardReturn(Request $request, string $ulid, \App\Services\Payments\StripePayments $stripe)
+    {
+        [$invoice, $t] = $this->resolve($request, $ulid);
+        if (! $invoice) return $this->notFound();
+        try {
+            $payment = $stripe->completeCheckout($invoice, (string) $request->query('session_id'));
+        } catch (\App\Services\Payments\StripeError $e) {
+            report($e);
+            $payment = null;
+        }
+        if (! $payment) {
+            return redirect('/i/v/'.$invoice->ulid)->with('status', 'Your card payment is processing. This page will show it as paid once it completes.');
+        }
+        $this->log($t, 'card_paid', $request, null, $payment->reference);
+
+        return redirect('/i/v/'.$invoice->ulid)->with('status', 'Thank you! Your payment of '.\App\Support\Money::format($payment->amount_cents).' was received. A receipt with your paid invoice is on its way by email.');
+    }
+
     public function reportPayment(Request $request, string $ulid, DocumentStore $docs)
     {
         [$invoice, $t] = $this->resolve($request, $ulid);
         if (! $invoice || ! $t->allows('report_payment') || $invoice->status !== 'issued') return $this->notFound();
-        $methods = $invoice->instructions_snapshot['methods'] ?? [];
+        $methods = array_values(array_intersect($invoice->instructions_snapshot['methods'] ?? [], \App\Support\PaymentMethods::MANUAL));
         $data = $request->validate([
             'method' => ['required', Rule::in($methods)],
             'amount' => ['required', 'numeric', 'min:0.01', 'max:99999999'],

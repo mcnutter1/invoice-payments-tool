@@ -10,6 +10,7 @@ use Illuminate\Support\Str;
 class BackupSearchIndex
 {
     private const SKIP = ['ulid', 'sha256', 'signature_hash', 'otp_hash', 'token_hash', 'tracking_hash', 'encrypted_body', 'tax_id_encrypted',
+        'ach_account_number_encrypted', 'stripe_secret_key_encrypted', 'stripe_webhook_secret_encrypted', 'venmo_api_token_hash',
         'stored_path', 'correlation_id', 'user_agent', 'ip', 'currency', 'status', 'kind', 'role', 'type'];
 
     public function __construct(private readonly BackupCatalog $catalog) {}

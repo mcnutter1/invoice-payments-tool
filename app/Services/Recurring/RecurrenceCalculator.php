@@ -70,14 +70,25 @@ class RecurrenceCalculator
 
     public function scheduleAmountCents(RecurringSchedule $s): int
     {
+        return $this->scheduleTotals($s)['total_cents'] ?? 0;
+    }
+
+    /** Pre-tax amount per invoice (revenue, excluding sales tax collected). */
+    public function scheduleSubtotalCents(RecurringSchedule $s): int
+    {
+        return $this->scheduleTotals($s)['subtotal_cents'] ?? 0;
+    }
+
+    private function scheduleTotals(RecurringSchedule $s): array
+    {
         $s->loadMissing('lines', 'client');
         $lines = $s->lines->map(function ($l) {
             $rate = $l->tax_rate_id ? (string) \App\Models\TaxRate::find($l->tax_rate_id)?->rate : '0';
 
             return ['quantity' => (string) $l->quantity, 'unit_price' => (string) $l->unit_price, 'tax_rate' => $rate];
         })->all();
-        if (! $lines) return 0;
+        if (! $lines) return [];
 
-        return app(InvoiceCalculator::class)->calculate($lines, 'none', 0, (bool) $s->client?->tax_exempt)['total_cents'];
+        return app(InvoiceCalculator::class)->calculate($lines, 'none', 0, (bool) $s->client?->tax_exempt);
     }
 }

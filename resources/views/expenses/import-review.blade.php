@@ -8,10 +8,13 @@
 @section('content')
 @include('expenses._tabs', ['active' => 'import'])
 <div class="flex flex-wrap items-center justify-between gap-3">
-    <div><h1>Review import</h1><p class="text-sm text-slate-500">{{ $doc->original_name }} · {{ count($p['rows']) }} rows</p></div>
+    <div><h1>Review import</h1><p class="text-sm text-slate-500">{{ $snapshot ? \App\Services\Expenses\Subscriptions\SubscriptionChargeImporter::label($snapshot) : $doc->original_name }} · {{ count($p['rows']) }} {{ $snapshot ? 'charges' : 'rows' }}</p></div>
     <div class="flex flex-wrap gap-1 text-sm">@foreach ($labels as $k => [$t, $c]) @if($counts[$k] ?? 0)<span class="chip {{ $c }}">{{ $counts[$k] }} {{ strtolower($t) }}</span>@endif @endforeach</div>
 </div>
 <form method="post" action="{{ $bu }}/expenses/import/{{ $doc->ulid }}" class="mt-4 space-y-4">@csrf
+    @if ($snapshot && collect($snapshot['sources'])->contains('mode', 'sample'))
+        <p class="alert alert-warn">{{ collect($snapshot['sources'])->where('mode', 'sample')->pluck('name')->implode(', ') }} {{ collect($snapshot['sources'])->where('mode', 'sample')->count() === 1 ? 'uses' : 'use' }} a sample connector. Import into a test business, or wait until the live connection is set up.</p>
+    @endif
     <div class="grid gap-4 lg:grid-cols-2">
         <div class="card overflow-x-auto">
             <div class="card-head"><h2>Categories</h2><span class="text-xs text-slate-500">Source category → your expense category</span></div>
@@ -54,7 +57,12 @@
             <tr @class(['opacity-50' => ! $selectable])>
                 <td><input type="checkbox" class="check" name="include[]" value="{{ $r['n'] }}" data-check="rows" @checked($r['status'] === 'new') @disabled(! $selectable) aria-label="Import row {{ $r['n'] + 1 }}"></td>
                 <td class="whitespace-nowrap">{{ $r['date'] ? \Illuminate\Support\Carbon::parse($r['date'])->format('M j, Y') : '—' }}</td>
-                <td>{{ $r['merchant'] }}@if($r['statement'] && $r['statement'] !== $r['merchant'])<div class="text-xs text-slate-500">{{ \Illuminate\Support\Str::limit($r['statement'], 70) }}</div>@endif @if($r['notes'])<div class="text-xs text-slate-500">{{ $r['notes'] }}</div>@endif</td>
+                <td>{{ $r['merchant'] }}@if($r['statement'] && $r['statement'] !== $r['merchant'])<div class="text-xs text-slate-500">{{ \Illuminate\Support\Str::limit($r['statement'], 70) }}</div>@endif @if($r['notes'])<div class="text-xs text-slate-500">{{ $r['notes'] }}</div>@endif
+                    @if (! empty($r['lines']) && count($r['lines']) > 1)
+                        <details class="mt-1 text-xs"><summary class="cursor-pointer text-slate-500">{{ count($r['lines']) }} line items</summary>
+                            <table class="mt-1 w-full">@foreach ($r['lines'] as $l)<tr><td class="py-0.5 pr-3 text-slate-600">{{ $l['description'] }}</td><td class="num py-0.5 tabular-nums">@money($l['amount_cents'])</td></tr>@endforeach</table>
+                        </details>
+                    @endif</td>
                 <td>{{ $r['category'] }}</td>
                 <td class="text-sm">{{ $r['account'] }}</td>
                 <td class="num">@money($r['cents'])</td>

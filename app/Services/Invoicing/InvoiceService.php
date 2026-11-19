@@ -81,7 +81,7 @@ class InvoiceService
                 'customer_note' => $data['customer_note'] ?? $business->default_customer_note,
                 'terms' => array_key_exists('terms', $data) ? $data['terms'] : \App\Support\InvoiceTerms::forClient($business, $client),
                 'internal_notes' => $data['internal_notes'] ?? null,
-                'payment_methods' => array_values(array_intersect($data['payment_methods'] ?? $business->allowedMethods(), $business->allowedMethods())),
+                'payment_methods' => \App\Support\PaymentMethods::forInvoice($business, $client, $data['payment_methods'] ?? null),
                 'recipients' => $this->cleanRecipients($data['recipients'] ?? null, $client),
             ];
             if ($invoice) {
@@ -217,7 +217,7 @@ class InvoiceService
             $invoice->issued_by = $this->ctx->user?->id;
             $invoice->business_snapshot = InvoicePresenter::businessSnapshot($business);
             $invoice->client_snapshot = $invoice->client->snapshot();
-            $invoice->instructions_snapshot = InvoicePresenter::instructionsSnapshot($business, $invoice->payment_methods ?? []);
+            $invoice->instructions_snapshot = InvoicePresenter::instructionsSnapshot($business, \App\Support\PaymentMethods::forInvoice($business, $invoice->client, $invoice->payment_methods ?: null));
             $invoice->template_snapshot = InvoicePresenter::templateSnapshot($business);
             // The issued record keeps the exact wording the client sees.
             $invoice->terms = $invoice->terms !== null ? \App\Support\InvoiceTerms::resolve($invoice->terms, $invoice) : null;

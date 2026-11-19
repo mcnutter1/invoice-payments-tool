@@ -30,20 +30,38 @@ class InvoicePresenter
 
     public static function instructionsSnapshot(Business $b, array $methods): array
     {
-        $allowed = array_values(array_intersect($methods ?: $b->allowedMethods(), $b->allowedMethods()));
+        $allowed = \App\Support\PaymentMethods::ordered(array_intersect($methods ?: $b->allowedMethods(), $b->allowedMethods()));
+        $has = fn (string $m) => in_array($m, $allowed, true);
+        $acct = $has('ach') ? $b->achAccountNumber() : null;
 
         return [
             'methods' => $allowed,
-            'zelle' => in_array('zelle', $allowed, true) ? [
+            'zelle' => $has('zelle') ? [
                 'recipient_name' => $b->zelle_recipient_name,
                 'email' => $b->zelle_email,
                 'phone' => $b->zelle_phone,
                 'qr_document_id' => $b->zelle_qr_document_id,
             ] : null,
-            'check' => in_array('check', $allowed, true) ? [
+            'check' => $has('check') ? [
                 'payee' => $b->check_payee ?: $b->legal_name,
                 'address' => $b->check_address ?: implode("\n", $b->addressLines()),
             ] : null,
+            // The account number stays encrypted at rest, including inside the frozen snapshot.
+            'ach' => $has('ach') ? [
+                'account_name' => $b->ach_account_name ?: $b->legal_name,
+                'bank_name' => $b->ach_bank_name,
+                'bank_location' => $b->ach_bank_location,
+                'bank_address' => $b->ach_bank_address,
+                'routing_number' => $b->ach_routing_number,
+                'wire_routing_number' => $b->ach_wire_routing_number,
+                'account_number_encrypted' => $b->ach_account_number_encrypted,
+                'account_last4' => $acct ? substr($acct, -4) : null,
+                'account_type' => $b->ach_account_type,
+                'swift_code' => $b->ach_swift_code,
+                'instructions' => $b->ach_instructions,
+            ] : null,
+            'venmo' => $has('venmo') ? ['handle' => ltrim((string) $b->venmo_handle, '@')] : null,
+            'card' => $has('card') ? ['processor' => 'stripe'] : null,
         ];
     }
 
@@ -67,7 +85,7 @@ class InvoicePresenter
         $live = $invoice->isDraft();
         $business = $live ? self::businessSnapshot($invoice->business) : ($invoice->business_snapshot ?? []);
         $client = $live ? $invoice->client->snapshot() : ($invoice->client_snapshot ?? []);
-        $instructions = $live ? self::instructionsSnapshot($invoice->business, $invoice->payment_methods ?? []) : ($invoice->instructions_snapshot ?? []);
+        $instructions = $live ? self::instructionsSnapshot($invoice->business, \App\Support\PaymentMethods::forInvoice($invoice->business, $invoice->client?->exists ? $invoice->client : null, $invoice->payment_methods ?: null)) : ($invoice->instructions_snapshot ?? []);
         $z = $instructions['zelle'] ?? null;
         $b = $invoice->business;
         // A QR added later is shown only if it belongs to the exact Zelle recipient frozen on the invoice.
@@ -78,6 +96,18 @@ class InvoicePresenter
         $zelleQr = ! empty($instructions['zelle']['qr_document_id'])
             ? $this->docs->dataUri(PrivateDocument::where('business_id', $invoice->business_id)->find($instructions['zelle']['qr_document_id']))
             : null;
+        if (! empty($instructions['ach']['account_number_encrypted'])) {
+            try {
+                $instructions['ach']['account_number'] = decrypt($instructions['ach']['account_number_encrypted']);
+            } catch (\Throwable) {
+                $instructions['ach'] = null; // unreadable (key rotated): never show partial bank details
+            }
+        }
+        if (is_array($instructions['ach'] ?? null)) unset($instructions['ach']['account_number_encrypted']);
+        // Card payments need a live Stripe connection, not just the snapshot.
+        if (! empty($instructions['card']) && ! $b->stripe_secret_key_encrypted) {
+            $instructions['card'] = null;
+        }
         $template = $live ? self::templateSnapshot($invoice->business) : ($invoice->template_snapshot ?? self::templateSnapshot($invoice->business));
         $logo = ! empty($business['logo_document_id'])
             ? $this->docs->dataUri(PrivateDocument::where('business_id', $invoice->business_id)->find($business['logo_document_id']))

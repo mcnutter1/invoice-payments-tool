@@ -82,6 +82,33 @@ return [
         'run_at' => env('FINANCE_REMINDERS_AT', '14:00'),
     ],
 
+    // Bank name lookups for ACH/wire instructions. {number} = 9-digit ABA routing number, {code} = SWIFT/BIC.
+    'banks' => [
+        'routing_lookup_url' => env('FINANCE_ROUTING_LOOKUP_URL', 'https://bankrouting.io/api/v1/aba/{number}'),
+        'swift_lookup_url' => env('FINANCE_SWIFT_LOOKUP_URL', env('FINANCE_SWIFT_LOOKUP_KEY') ? 'https://api.api-ninjas.com/v1/swiftcode?swift={code}' : ''),
+        'swift_lookup_key' => env('FINANCE_SWIFT_LOOKUP_KEY'),
+        'timeout' => 4,
+    ],
+
+    // Tax estimate parameters. Optional HTTPS JSON feed: {"tables": [{"jurisdiction": "NJ", "year": 2027, "data": {...}}]}.
+    'tax' => [
+        'feed_url' => env('FINANCE_TAX_FEED_URL', ''),
+    ],
+
+    'stripe' => [
+        'api_base' => 'https://api.stripe.com/v1',
+        'webhook_tolerance_seconds' => 300,
+        'timeout' => 20,
+    ],
+
+    // Expenses → Import → subscription charges. Each class implements Services\Expenses\Subscriptions\SubscriptionSource;
+    // swap a sample source for a live API connector by replacing its class here (keep the same key()).
+    'subscription_sources' => [
+        \App\Services\Expenses\Subscriptions\Sources\AwsSampleSource::class,
+        \App\Services\Expenses\Subscriptions\Sources\Microsoft365SampleSource::class,
+        \App\Services\Expenses\Subscriptions\Sources\HiscoxSampleSource::class,
+    ],
+
     'tracking' => [
         // Opens/clicks this soon after the mail service accepted the email are treated as security pre-checks.
         'prefetch_seconds' => (int) env('FINANCE_PREFETCH_SECONDS', 30),

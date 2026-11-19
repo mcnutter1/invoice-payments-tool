@@ -71,6 +71,7 @@ class PaymentController extends Controller
             'client_id' => ['required', Rule::exists('clients', 'id')->where('business_id', $b->id)],
             'method' => ['required', Rule::in(array_keys(PaymentService::METHODS))],
             'amount' => ['required', 'numeric', 'min:0.01'],
+            'fee' => ['nullable', 'numeric', 'min:0'],
             'received_date' => ['required', 'date'],
             'deposit_account_id' => ['nullable', 'integer'],
             'reference' => ['nullable', 'string', 'max:120'],
@@ -86,6 +87,7 @@ class PaymentController extends Controller
         }
         $payment = $this->service->record($b, [
             'client_id' => $data['client_id'], 'method' => $data['method'], 'amount_cents' => $this->cents($data['amount']),
+            'fee_cents' => ($data['fee'] ?? '') !== '' ? $this->cents($data['fee']) : 0,
             'received_date' => $data['received_date'], 'deposit_account_id' => $data['deposit_account_id'] ?? null,
             'reference' => $data['reference'] ?? null, 'check_number' => $data['check_number'] ?? null, 'memo' => $data['memo'] ?? null,
             'send_receipt' => $request->boolean('send_receipt'),
@@ -140,6 +142,14 @@ class PaymentController extends Controller
         return back()->with('status', 'Marked cleared.');
     }
 
+    public function addFee(Request $request, int $id)
+    {
+        $data = $request->validate(['amount' => ['required', 'numeric', 'min:0.01'], 'date' => ['required', 'date'], 'note' => ['nullable', 'string', 'max:300']]);
+        $this->service->addFee($this->payment($id), $this->cents($data['amount']), $data['date'], $data['note'] ?? null);
+
+        return back()->with('status', 'Fee recorded to Bank & Merchant Fees.');
+    }
+
     public function reverse(Request $request, int $id)
     {
         $data = $request->validate(['kind' => ['required', Rule::in(['returned', 'error'])], 'reason' => ['required', 'string', 'max:500'], 'date' => ['nullable', 'date']]);
@@ -161,7 +171,8 @@ class PaymentController extends Controller
         $claim = $this->claimModel($id)->load('invoice.client', 'reviewer', 'payment');
 
         return view('payments.claim', ['claim' => $claim, 'accounts' => $this->depositAccounts(),
-            'defaultAccount' => $this->service->defaultDepositAccount($this->biz(), $claim->method)]);
+            'defaultAccount' => $this->service->defaultDepositAccount($this->biz(), $claim->method),
+            'suggestedFee' => $this->service->suggestedFee($this->biz(), $claim->method, $claim->reported_amount_cents)]);
     }
 
     public function claimAttachment(int $id, DocumentStore $docs)
@@ -175,12 +186,13 @@ class PaymentController extends Controller
     public function confirmClaim(Request $request, int $id)
     {
         $data = $request->validate([
-            'amount' => ['required', 'numeric', 'min:0.01'], 'received_date' => ['required', 'date'],
+            'amount' => ['required', 'numeric', 'min:0.01'], 'received_date' => ['required', 'date'], 'fee' => ['nullable', 'numeric', 'min:0'],
             'deposit_account_id' => ['nullable', 'integer'], 'reference' => ['nullable', 'string', 'max:120'],
             'note' => ['nullable', 'string', 'max:1000'], 'evidence_checked' => ['accepted'],
-        ], ['evidence_checked.accepted' => 'Confirm you verified the deposit in your bank account or have the physical check.']);
+        ], ['evidence_checked.accepted' => 'Confirm you verified the funds arrived (bank or Venmo) or that you have the physical check.']);
         $payment = $this->service->confirmClaim($this->claimModel($id), [
             'amount_cents' => $this->cents($data['amount']), 'received_date' => $data['received_date'],
+            'fee_cents' => ($data['fee'] ?? '') !== '' ? $this->cents($data['fee']) : 0,
             'deposit_account_id' => $data['deposit_account_id'] ?? null, 'reference' => $data['reference'] ?? null,
             'note' => $data['note'] ?? null, 'send_receipt' => $request->boolean('send_receipt', true),
         ]);

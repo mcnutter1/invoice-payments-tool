@@ -34,6 +34,13 @@ class Payment extends Model
     public function recorder(): BelongsTo { return $this->belongsTo(User::class, 'recorded_by'); }
     public function claim(): BelongsTo { return $this->belongsTo(PaymentClaim::class, 'claim_id'); }
 
+    public function feeAccount(): BelongsTo { return $this->belongsTo(ChartAccount::class, 'fee_account_id'); }
+
+    public function netCents(): int
+    {
+        return $this->amount_cents - (int) $this->fee_cents;
+    }
+
     public function appliedCents(): int
     {
         return (int) $this->allocations()->where('status', 'active')->sum('amount_cents');

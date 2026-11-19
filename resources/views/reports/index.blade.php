@@ -23,6 +23,7 @@
                 'sales-tax' => 'Liability and collected-tax schedule',
                 'recurring-forecast' => 'Upcoming scheduled billing (forecast)',
                 'contract-values' => 'Committed vs invoiced vs collected',
+                'tax-estimate' => 'Federal, state & self-employment tax for the year, with quarterly estimates',
             ][$key] ?? '' }}</div></a>
     @endforeach
 </div>

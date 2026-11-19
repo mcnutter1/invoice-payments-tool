@@ -611,4 +611,70 @@
       update();
     });
   }
+
+  // ---------- Bank name lookup (routing / SWIFT) ----------
+  {
+    const box = $('[data-bank-lookup]');
+    if (box) {
+      const name = $('[data-lookup-name]', box); const status = $('[data-lookup-status]', box);
+      const lookup = async (kind) => {
+        const input = $(kind === 'routing' ? '[data-lookup-routing]' : '[data-lookup-swift]', box);
+        const v = (input?.value || '').replace(/[\s-]/g, '');
+        if (!v) return;
+        status.textContent = 'Looking up…';
+        try {
+          const res = await fetch(box.dataset.lookupUrl + '?' + kind + '=' + encodeURIComponent(v), { headers: { Accept: 'application/json' }, credentials: 'same-origin' });
+          const d = await res.json();
+          if (!d.valid) { status.textContent = d.message || 'Not valid.'; input.setAttribute('aria-invalid', 'true'); return; }
+          input.removeAttribute('aria-invalid');
+          if (d.bank_name) { name.value = d.bank_name; status.textContent = 'Directory match' + (d.location ? ' · ' + d.location : ''); } else { status.textContent = d.message || 'Bank not found — enter the name.'; }
+        } catch (_) { status.textContent = 'Lookup unavailable — enter the bank name.'; }
+      };
+      $$('[data-lookup-btn]', box).forEach((b) => b.addEventListener('click', () => lookup(b.dataset.lookupBtn)));
+      const rn = $('[data-lookup-routing]', box);
+      rn?.addEventListener('change', () => { if (rn.value.replace(/\D/g, '').length === 9) lookup('routing'); });
+    }
+  }
+
+  // ---------- Payment methods follow the client's allowed methods ----------
+  {
+    const sel = $('[data-methods-client]');
+    if (sel) {
+      const client = $(sel.dataset.methodsClient);
+      const boxes = $$('input[data-method-option]', sel);
+      const note = $('[data-methods-note]', sel);
+      const apply = (initial) => {
+        const raw = client?.selectedOptions[0]?.dataset.methods;
+        const allowed = raw ? JSON.parse(raw) : null;
+        boxes.forEach((b) => {
+          const ok = !allowed || allowed.includes(b.value);
+          b.disabled = !ok;
+          if (!ok) b.checked = false; else if (!initial && sel.dataset.fresh === '1') b.checked = true;
+          b.closest('label')?.classList.toggle('opacity-50', !ok);
+        });
+        if (note) note.hidden = !allowed || boxes.every((b) => allowed.includes(b.value));
+      };
+      client?.addEventListener('change', () => apply(false));
+      apply(true);
+    }
+  }
+
+  // ---------- Fee → net ----------
+  $$('[data-fee-form]').forEach((f) => {
+    const out = $('[data-net-out]', f);
+    const update = () => { if (out) out.textContent = money(toCents($('[data-gross]', f)?.value) - toCents($('[data-fee]', f)?.value)); };
+    f.addEventListener('input', update); update();
+  });
+
+  // ---------- Public invoice: "I've sent this" jumps to the report form with the method chosen ----------
+  {
+    const report = $('details#report');
+    $$('[data-report-method]').forEach((a) => a.addEventListener('click', (e) => {
+      if (!report) return;
+      e.preventDefault();
+      const m = $('select[name="method"]', report); if (m) m.value = a.dataset.reportMethod;
+      report.open = true; report.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      $('input[name="amount"]', report)?.focus({ preventScroll: true });
+    }));
+  }
 })();

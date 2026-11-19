@@ -59,15 +59,39 @@ class ExpenseImportService
             throw new DomainException('This doesn’t look like a transactions export: it needs Date, Amount and Merchant (or Original Statement) columns.');
         }
         $get = fn (array $r, string $f) => isset($idx[$f]) ? trim((string) ($r[$idx[$f]] ?? '')) : '';
+        $records = [];
+        foreach ($raw as $n => $r) {
+            $records[] = ['n' => $n, 'merchant' => $get($r, 'merchant'), 'category' => $get($r, 'category'), 'account' => $get($r, 'account'),
+                'statement' => $get($r, 'statement'), 'notes' => $get($r, 'notes'), 'tags' => $get($r, 'tags'), 'entity' => $get($r, 'entity'),
+                'date' => $get($r, 'date'), 'amount' => $get($r, 'amount'), 'pending' => strtolower($get($r, 'pending')) === 'true',
+                'external_id' => $get($r, 'id') !== '' ? 'monarch:'.$get($r, 'id') : null];
+        }
+
+        return $this->classify($b, $records);
+    }
+
+    /** Preview a snapshot of pulled subscription charges (see Subscriptions\SubscriptionChargeImporter). */
+    public function previewCharges(Business $b, array $snapshot): array
+    {
+        return $this->classify($b, array_map(fn (array $c, int $n) => [
+            'n' => $n, 'merchant' => $c['vendor'], 'category' => $c['category'], 'account' => $c['paid_with'], 'statement' => $c['statement'],
+            'notes' => $c['description'], 'tags' => $c['source_name'], 'entity' => '', 'date' => $c['date'],
+            'amount' => '-'.number_format($c['amount_cents'] / 100, 2, '.', ''), 'pending' => false, 'external_id' => $c['external_id'], 'lines' => $c['lines'] ?? [],
+        ], $snapshot['charges'] ?? [], array_keys($snapshot['charges'] ?? [])));
+    }
+
+    /** @param list<array<string,mixed>> $records normalized source rows; amount is signed (negative = money out) */
+    private function classify(Business $b, array $records): array
+    {
         $seen = [];
         $rows = [];
-        foreach ($raw as $n => $r) {
-            $row = ['n' => $n, 'merchant' => $get($r, 'merchant') ?: Str::limit($get($r, 'statement'), 60, ''), 'category' => $get($r, 'category') ?: 'Uncategorized',
-                'account' => $get($r, 'account') ?: 'Unknown account', 'statement' => $get($r, 'statement'), 'notes' => $get($r, 'notes'),
-                'tags' => $get($r, 'tags'), 'entity' => $get($r, 'entity'), 'status' => 'new', 'error' => null, 'existing_id' => null];
+        foreach ($records as $r) {
+            $row = ['n' => $r['n'], 'merchant' => $r['merchant'] ?: Str::limit($r['statement'], 60, ''), 'category' => $r['category'] ?: 'Uncategorized',
+                'account' => $r['account'] ?: 'Unknown account', 'statement' => $r['statement'], 'notes' => $r['notes'],
+                'tags' => $r['tags'], 'entity' => $r['entity'], 'lines' => $r['lines'] ?? [], 'status' => 'new', 'error' => null, 'existing_id' => null];
             try {
-                $row['date'] = Carbon::parse($get($r, 'date'))->toDateString();
-                $cents = Money::parse(str_replace(['$', ','], '', $get($r, 'amount')));
+                $row['date'] = Carbon::parse($r['date'])->toDateString();
+                $cents = Money::parse(str_replace(['$', ','], '', (string) $r['amount']));
             } catch (\Throwable) {
                 $rows[] = $row + ['date' => null, 'cents' => 0, 'status' => 'error', 'error' => 'Unreadable date or amount', 'external_id' => null];
                 continue;
@@ -75,9 +99,9 @@ class ExpenseImportService
             $row['cents'] = abs($cents);
             $fp = $row['date'].'|'.$cents.'|'.strtolower($row['statement'] ?: $row['merchant']);
             $seen[$fp] = ($seen[$fp] ?? 0) + 1;
-            $row['external_id'] = $get($r, 'id') !== '' ? 'monarch:'.$get($r, 'id') : 'csv:'.substr(hash('sha256', $fp.'|'.$seen[$fp]), 0, 40);
+            $row['external_id'] = $r['external_id'] ?: 'csv:'.substr(hash('sha256', $fp.'|'.$seen[$fp]), 0, 40);
             if ($cents >= 0) $row['status'] = 'refund';
-            elseif (strtolower($get($r, 'pending')) === 'true') $row['status'] = 'pending';
+            elseif (! empty($r['pending'])) $row['status'] = 'pending';
             $rows[] = $row;
         }
 
@@ -160,10 +184,11 @@ class ExpenseImportService
     /**
      * Create expenses for the chosen rows. $opts: include (row numbers), categories (name→account id), accounts (name→account id),
      * client_id, project_id, entity (only rows for this business entity), remember (bool).
+     *
+     * @param array $p result of preview() / previewCharges()
      */
-    public function commit(Business $b, string $csv, string $filename, array $opts): ImportBatch
+    public function commit(Business $b, array $p, string $filename, array $opts, string $kind = 'expense_csv'): ImportBatch
     {
-        $p = $this->preview($b, $csv);
         $include = array_flip(array_map('intval', $opts['include'] ?? []));
         $catAllowed = ExpenseService::expenseAccounts($b)->keyBy('id');
         $fundAllowed = ExpenseService::fundingAccounts($b)->keyBy('id');
@@ -171,7 +196,7 @@ class ExpenseImportService
             && (empty($opts['entity']) || $r['entity'] === $opts['entity'])));
         if (! $rows) throw new DomainException('Select at least one row to import.');
 
-        $batch = new ImportBatch(['kind' => 'expense_csv', 'filename' => mb_substr($filename, 0, 255), 'row_count' => count($p['rows']),
+        $batch = new ImportBatch(['kind' => $kind, 'filename' => mb_substr($filename, 0, 255), 'row_count' => count($p['rows']),
             'mapping' => ['categories' => $opts['categories'] ?? [], 'accounts' => $opts['accounts'] ?? []], 'created_by' => $this->ctx->user?->id]);
         $batch->business_id = $b->id;
         $batch->save();
@@ -185,13 +210,17 @@ class ExpenseImportService
                 DB::transaction(function () use ($b, $r, $acct, $fund, $opts, $batch, &$vendors) {
                     $key = strtolower($r['merchant']);
                     $vendors[$key] ??= $this->vendor($b, $r['merchant'], $acct->id);
+                    // Itemized charges (e.g. per-service cloud usage) keep their breakdown when it adds up.
+                    $lines = $r['lines'] && array_sum(array_column($r['lines'], 'amount_cents')) === $r['cents']
+                        ? array_map(fn ($l) => ['account_id' => $acct->id, 'amount_cents' => (int) $l['amount_cents'], 'description' => mb_substr($l['description'], 0, 255), 'billable' => false], $r['lines'])
+                        : [['account_id' => $acct->id, 'amount_cents' => $r['cents'], 'description' => $r['statement'] ?: null, 'billable' => false]];
                     $this->expenses->create($b, [
                         'kind' => 'expense', 'source' => 'import', 'import_batch_id' => $batch->id, 'external_id' => $r['external_id'],
                         'vendor_id' => $vendors[$key]?->id, 'expense_date' => $r['date'], 'payment_account_id' => $fund->id, 'payment_method' => 'card',
                         'description' => $r['notes'] ?: $r['merchant'], 'client_id' => $opts['client_id'] ?? null, 'project_id' => $opts['project_id'] ?? null,
                         'import_meta' => array_filter(['merchant' => $r['merchant'], 'category' => $r['category'], 'account' => $r['account'],
                             'statement' => $r['statement'], 'tags' => $r['tags'], 'entity' => $r['entity'], 'file' => $batch->filename]),
-                        'lines' => [['account_id' => $acct->id, 'amount_cents' => $r['cents'], 'description' => $r['statement'] ?: null, 'billable' => false]],
+                        'lines' => $lines,
                     ]);
                 });
                 $imported++;
@@ -206,7 +235,7 @@ class ExpenseImportService
             $m['accounts'] = array_merge((array) ($m['accounts'] ?? []), array_map('intval', array_filter($opts['accounts'] ?? [])));
             $b->forceFill(['expense_import_mappings' => $m])->save();
         }
-        Audit::log($b, 'expenses.imported', $batch, null, ['file' => $filename, 'imported' => $imported, 'errors' => $errors]);
+        Audit::log($b, 'expenses.imported', $batch, null, ['file' => $filename, 'kind' => $kind, 'imported' => $imported, 'errors' => $errors]);
 
         return $batch;
     }

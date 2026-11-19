@@ -38,6 +38,18 @@
             </tbody></table></div>
     </div>
     <aside class="space-y-4">
+        @if ($schedule->card_autopay)
+        <div class="card"><div class="card-head"><h2>Card autopay</h2><span class="chip {{ $schedule->hasAutopay() ? 'chip-green' : 'chip-amber' }}">{{ $schedule->hasAutopay() ? 'Active' : 'Waiting for client' }}</span></div>
+            <div class="card-body space-y-2 text-sm">
+                @if ($schedule->stripe_payment_method_id)
+                    <p>{{ $schedule->autopay_card_label }} is charged when each invoice is issued{{ $schedule->auto_issue ? '' : ' (issue invoices, then use “Charge saved card”)' }}.</p>
+                    <p class="hint">Authorized by {{ $schedule->autopay_authorized_email ?: 'the client' }} on {{ $schedule->autopay_authorized_at?->timezone($biz->timezone)->format('M j, Y g:ia') }}. If a charge fails, the invoice is emailed for payment instead.</p>
+                    @if ($ctx->can('recurring.manage'))<form method="post" action="{{ $bu }}/recurring/{{ $schedule->id }}/autopay/remove" data-confirm="Remove the saved card? Future invoices will need to be paid manually.">@csrf<button class="btn btn-sm btn-danger">Remove saved card</button></form>@endif
+                @else
+                    <p class="text-slate-600">The client is offered “save this card for automatic payments” the next time they pay one of this schedule’s invoices by card.</p>
+                @endif
+            </div></div>
+        @endif
         <div class="card"><div class="card-head"><h2>Lines</h2></div><ul class="card-body space-y-1 text-sm">
             @foreach ($schedule->lines as $l)<li>{{ $l->name }} · {{ rtrim(rtrim((string) $l->quantity, '0'), '.') }} × ${{ number_format((float) $l->unit_price, 2) }}</li>@endforeach
         </ul></div>

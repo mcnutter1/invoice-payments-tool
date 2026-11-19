@@ -138,7 +138,7 @@ class InvoiceController extends Controller
             'terms' => ['nullable', 'string', 'max:5000'],
             'internal_notes' => ['nullable', 'string', 'max:5000'],
             'payment_methods' => ['nullable', 'array'],
-            'payment_methods.*' => [Rule::in(['zelle', 'check'])],
+            'payment_methods.*' => [Rule::in(\App\Support\PaymentMethods::INVOICE)],
             'recipients' => ['nullable', 'string', 'max:1000'],
             'lock_version' => ['nullable', 'integer'],
             'lines' => ['required', 'array', 'min:1', 'max:200'],
@@ -405,6 +405,18 @@ class InvoiceController extends Controller
         Audit::log($this->biz(), 'invoice.links_revoked', $invoice, null, ['count' => $n]);
 
         return back()->with('status', "Revoked {$n} client link(s). Send the invoice again to issue a new link.");
+    }
+
+    /** Staff-initiated charge of the recurring schedule's saved card. */
+    public function chargeCard(int $id, \App\Services\Payments\StripePayments $stripe)
+    {
+        $invoice = $this->invoice($id);
+        $payment = $stripe->chargeAutopay($invoice);
+        if (! $payment) {
+            return back()->with('error', 'The saved card could not be charged. Details are in the activity log; the client can still pay from the invoice page.');
+        }
+
+        return $this->to('/payments/'.$payment->id, 'Card charged '.\App\Support\Money::format($payment->amount_cents).'. A receipt was emailed to the client.');
     }
 
     public function toggleReminders(int $id)

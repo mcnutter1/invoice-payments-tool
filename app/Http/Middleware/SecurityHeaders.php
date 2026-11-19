@@ -39,7 +39,8 @@ class SecurityHeaders
                 "frame-ancestors 'self'",
                 "base-uri 'none'",
                 "object-src 'none'",
-                "form-action 'self' ".$loginOrigin,
+                // Stripe Checkout is reached via a POST → 303 redirect, which form-action also governs.
+                "form-action 'self' ".$loginOrigin.' https://checkout.stripe.com',
             ]));
         }
         if ($request->isSecure()) {

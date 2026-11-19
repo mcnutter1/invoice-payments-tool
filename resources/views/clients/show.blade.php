@@ -40,6 +40,7 @@
                 <dt>Phone</dt><dd>{{ $client->phone ?: '—' }}</dd>
                 <dt>Billing</dt><dd>{!! nl2br(e(implode("\n", $client->billingAddressLines()) ?: '—')) !!}</dd>
                 <dt>Terms</dt><dd>Net {{ $client->default_terms_days ?? $biz->default_terms_days }}</dd>
+                <dt>Pays by</dt><dd>{{ collect(\App\Support\PaymentMethods::forClient($biz, $client))->map(fn ($m) => \App\Support\PaymentMethods::label($m))->implode(', ') ?: 'No methods enabled' }}@unless (is_array($client->payment_methods)) <span class="text-xs text-slate-500">(business defaults)</span>@endunless</dd>
             </dl>
             @if ($client->notes)<p class="mt-3 rounded bg-amber-50 p-2 text-xs text-amber-900"><strong>Private note:</strong> {{ $client->notes }}</p>@endif
         </div>
@@ -95,7 +96,7 @@
         <div class="card overflow-x-auto"><div class="card-head"><h2>Payments</h2></div>
             <table class="tbl"><thead><tr><th>Date</th><th>Method</th><th class="num">Amount</th><th>Status</th></tr></thead><tbody>
             @forelse ($payments as $p)
-                <tr><td><a href="{{ $bu }}/payments/{{ $p->id }}">{{ $p->received_date->format('M j, Y') }}</a></td><td>{{ ucfirst($p->method) }} {{ $p->check_number ? '#'.$p->check_number : '' }}</td><td class="num">@money($p->amount_cents)</td><td>@include('partials.status', ['s' => $p->status])</td></tr>
+                <tr><td><a href="{{ $bu }}/payments/{{ $p->id }}">{{ $p->received_date->format('M j, Y') }}</a></td><td>{{ \App\Support\PaymentMethods::label($p->method) }} {{ $p->check_number ? '#'.$p->check_number : '' }}</td><td class="num">@money($p->amount_cents)</td><td>@include('partials.status', ['s' => $p->status])</td></tr>
             @empty <tr><td colspan="4" class="text-slate-500">No payments.</td></tr> @endforelse
             </tbody></table></div>
         @endif

@@ -7,7 +7,7 @@
         'unit_price' => (string) $l->unit_price, 'income_account_id' => $l->income_account_id, 'tax_rate_id' => $l->tax_rate_id, 'contract_milestone_id' => $l->contract_milestone_id,
     ])->all() : [['quantity' => '1']]);
     if (! $lines) $lines = [['quantity' => '1']];
-    $methods = old('payment_methods', $invoice?->payment_methods ?? $biz->allowedMethods());
+    $methods = old('payment_methods', $invoice?->payment_methods ?: \App\Support\PaymentMethods::forClient($biz, $clients->firstWhere('id', (int) ($invoice?->client_id ?? $selectedClient))));
     $action = $invoice ? $bu.'/invoices/'.$invoice->id : $bu.'/invoices';
 @endphp
 <div class="flex flex-wrap items-center justify-between gap-3">
@@ -28,7 +28,7 @@
             <div class="sm:col-span-2"><label class="label" for="client_id">Client</label>
                 <select class="input" id="client_id" name="client_id" required data-client-select>
                     <option value="">Choose a client…</option>
-                    @foreach ($clients as $c)<option value="{{ $c->id }}" data-exempt="{{ $c->tax_exempt ? 1 : 0 }}" data-email="{{ $c->email }}" data-recipients="{{ json_encode($c->recipientOptions()) }}" data-terms="{{ \App\Support\InvoiceTerms::forClient($biz, $c) }}" data-payment-terms="{{ \App\Support\InvoiceTerms::paymentTerms($biz, $c) }}" @selected(old('client_id', $invoice?->client_id ?? $selectedClient) == $c->id)>{{ $c->display_name }}</option>@endforeach
+                    @foreach ($clients as $c)<option value="{{ $c->id }}" data-exempt="{{ $c->tax_exempt ? 1 : 0 }}" data-email="{{ $c->email }}" data-recipients="{{ json_encode($c->recipientOptions()) }}" data-terms="{{ \App\Support\InvoiceTerms::forClient($biz, $c) }}" data-payment-terms="{{ \App\Support\InvoiceTerms::paymentTerms($biz, $c) }}" data-methods="{{ json_encode(\App\Support\PaymentMethods::forClient($biz, $c)) }}" @selected(old('client_id', $invoice?->client_id ?? $selectedClient) == $c->id)>{{ $c->display_name }}</option>@endforeach
                 </select>
                 @if ($clients->isEmpty())<p class="hint">No clients yet — <a href="{{ $bu }}/clients/new">add a client</a> first.</p>@endif
             </div>
@@ -71,10 +71,13 @@
                 <textarea class="input" id="terms" name="terms" rows="7" data-terms>{{ old('terms', $invoice ? $invoice->terms : \App\Support\InvoiceTerms::forClient($biz, $termsClient)) }}</textarea>
                 <p class="hint"><code>{payment_terms}</code> is filled in automatically: <strong data-payment-terms-out>{{ \App\Support\InvoiceTerms::paymentTerms($biz, $termsClient) }}</strong> from the client profile. <code>{client_name}</code> and <code>{business_name}</code> are filled in too. Client-specific terms come from the client profile; edit freely for this invoice, or clear to show none.</p></div>
             <div class="sm:col-span-2"><label class="label" for="internal_notes">Internal notes</label><textarea class="input" id="internal_notes" name="internal_notes" rows="2">{{ old('internal_notes', $invoice?->internal_notes) }}</textarea><p class="hint">Never shown on the PDF or client page.</p></div>
-            <fieldset><legend class="label">Payment methods shown</legend>
+            <fieldset class="sm:col-span-2" data-methods-client="#client_id" data-fresh="{{ $invoice || old('payment_methods') ? 0 : 1 }}"><legend class="label">Payment options shown to the client</legend>
+                <div class="flex flex-wrap gap-x-5 gap-y-2">
                 @foreach ($biz->allowedMethods() as $m)
-                    <label class="mr-4 inline-flex items-center gap-2 text-sm"><input class="check" type="checkbox" name="payment_methods[]" value="{{ $m }}" @checked(in_array($m, $methods, true))> {{ $m === 'zelle' ? 'Zelle' : 'Mail a check' }}</label>
+                    <label class="inline-flex items-center gap-2 text-sm"><input class="check" type="checkbox" name="payment_methods[]" value="{{ $m }}" data-method-option @checked(in_array($m, $methods, true))> {{ \App\Support\PaymentMethods::label($m) }}</label>
                 @endforeach
+                </div>
+                <p class="hint" data-methods-note hidden>Some options are turned off for this client (client profile).</p>
             </fieldset>
             <div class="sm:col-span-2">
                 @php $edClient = $clients->firstWhere('id', (int) old('client_id', $invoice?->client_id ?? $selectedClient)); @endphp

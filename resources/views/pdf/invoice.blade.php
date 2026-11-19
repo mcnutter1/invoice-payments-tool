@@ -33,7 +33,7 @@
     .box { border: 1px solid #e2e8f0; padding: 8px 10px; }
     .pay td.paybox { vertical-align: top; border: 1px solid #e2e8f0; border-top: 2px solid {{ $accent }}; background: #f8fafc; padding: 8px 10px; }
     .paytitle { font-weight: bold; font-size: 10.5px; margin-bottom: 4px; }
-    .kv td { padding: 1px 0; vertical-align: top; } .kv td.k { color: #64748b; width: 62px; }
+    .kv td { padding: 1px 0; vertical-align: top; } .kv td.k { color: #64748b; width: 74px; }
     .terms { page-break-inside: auto; } .terms p { margin: 0 0 4px; }
     .watermark { position: fixed; top: 280px; left: 60px; font-size: 110px; color: rgba(148,163,184,0.25); transform: rotate(-30deg); }
     .watermark-paid { left: 150px; font-weight: bold; color: rgba(5,150,105,0.28); border: 8px solid rgba(5,150,105,0.28); padding: 0 24px; }
@@ -122,17 +122,37 @@
     <tr class="grand"><td>Total</td><td class="num">{{ $M($invoice->total_cents) }}</td></tr>
 </table>
 
-@if (! empty($instructions['zelle']) || ! empty($instructions['check']))
 @php
-    $both = ! empty($instructions['zelle']) && ! empty($instructions['check']);
+    $payMethods = array_values(array_filter(\App\Support\PaymentMethods::INVOICE, fn ($m) => ! empty($instructions[$m])));
     $memoText = $memo ?? 'Invoice number';
 @endphp
+@if ($payMethods)
 <div class="section">
     <h3>How to pay</h3>
-    <table class="pay"><tr>
-        @if (! empty($instructions['zelle']))
-            @php $z = $instructions['zelle']; @endphp
-            <td class="paybox" style="width: {{ $both ? '49%' : '100%' }};">
+    <table class="pay">
+    @foreach (array_chunk($payMethods, 2) as $row)
+        <tr>
+        @foreach ($row as $i => $pm)
+            @if ($i === 1)<td style="width: 2%;"></td>@endif
+            <td class="paybox" style="width: {{ count($row) === 2 ? '49%' : '100%' }};">
+            @if ($pm === 'card')
+                <div class="paytitle">Credit / debit card</div>
+                <div>Pay securely online: open this invoice from your email and choose “Pay by card”.</div>
+            @elseif ($pm === 'ach')
+                @php $a = $instructions['ach']; @endphp
+                <div class="paytitle">Bank transfer (ACH / wire)</div>
+                <table class="kv">
+                    @if (! empty($a['bank_name']))<tr><td class="k">Bank</td><td>{{ $a['bank_name'] }}{{ ! empty($a['bank_location']) ? ' · '.$a['bank_location'] : '' }}</td></tr>@endif
+                    <tr><td class="k">Account name</td><td>{{ $a['account_name'] }}</td></tr>
+                    <tr><td class="k">Routing (ACH)</td><td>{{ $a['routing_number'] }}</td></tr>
+                    @if (! empty($a['wire_routing_number']) && $a['wire_routing_number'] !== $a['routing_number'])<tr><td class="k">Routing (wire)</td><td>{{ $a['wire_routing_number'] }}</td></tr>@endif
+                    <tr><td class="k">Account</td><td>{{ $a['account_number'] ?? '' }} ({{ $a['account_type'] ?: 'checking' }})</td></tr>
+                    @if (! empty($a['swift_code']))<tr><td class="k">SWIFT/BIC</td><td>{{ $a['swift_code'] }}</td></tr>@endif
+                    @if (! empty($a['bank_address']))<tr><td class="k">Bank address</td><td>{{ $a['bank_address'] }}</td></tr>@endif
+                    <tr><td class="k">Reference</td><td style="font-weight: bold;">{{ $memoText }}</td></tr>
+                </table>
+            @elseif ($pm === 'zelle')
+                @php $z = $instructions['zelle']; @endphp
                 <table><tr>
                     <td style="vertical-align: top;">
                         <div class="paytitle">Zelle</div>
@@ -146,21 +166,27 @@
                     </td>
                     @if (! empty($zelleQr))<td style="vertical-align: top; width: 78px; text-align: right;"><img src="{{ $zelleQr }}" alt="" style="width: 72px; height: 72px;"><div class="muted" style="font-size: 7px; text-align: center;">Scan to pay</div></td>@endif
                 </tr></table>
-            </td>
-        @endif
-        @if ($both)<td style="width: 2%;"></td>@endif
-        @if (! empty($instructions['check']))
-            @php $ck = $instructions['check']; @endphp
-            <td class="paybox" style="width: {{ $both ? '49%' : '100%' }};">
+            @elseif ($pm === 'venmo')
+                <div class="paytitle">Venmo</div>
+                <table class="kv">
+                    <tr><td class="k">Pay</td><td>{{ '@'.$instructions['venmo']['handle'] }}</td></tr>
+                    <tr><td class="k">Note</td><td style="font-weight: bold;">{{ $memoText }}</td></tr>
+                </table>
+            @elseif ($pm === 'check')
+                @php $ck = $instructions['check']; @endphp
                 <div class="paytitle">Check</div>
                 <table class="kv">
                     <tr><td class="k">Payable to</td><td>{{ $ck['payee'] }}</td></tr>
                     <tr><td class="k">Mail to</td><td style="white-space: pre-line;">{{ $ck['address'] }}</td></tr>
                     <tr><td class="k">Memo</td><td style="font-weight: bold;">{{ $memoText }}</td></tr>
                 </table>
+            @endif
             </td>
-        @endif
-    </tr></table>
+        @endforeach
+        </tr>
+        @if (! $loop->last)<tr><td colspan="3" style="height: 6px;"></td></tr>@endif
+    @endforeach
+    </table>
 </div>
 @endif
 

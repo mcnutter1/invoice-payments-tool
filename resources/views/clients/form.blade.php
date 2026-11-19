@@ -40,6 +40,24 @@
         <div class="sm:col-span-2"><label class="label" for="invoice_terms">Client-specific invoice terms</label><textarea class="input" id="invoice_terms" name="invoice_terms" rows="3" placeholder="e.g. Reference PO 4500123 on every invoice. Net 45 per MSA §4.2.">{{ old('invoice_terms', $client->invoice_terms) }}</textarea><p class="hint">Added after your standard terms on new invoices for this client. Shown to the client.</p></div>
         <div class="sm:col-span-2"><label class="label" for="notes">Private notes</label><textarea class="input" id="notes" name="notes" rows="3">{{ old('notes', $client->notes) }}</textarea><p class="hint">Never shown to the client.</p></div>
     </div>
+    @php
+        $custom = (bool) old('payment_methods_custom', is_array($client->payment_methods));
+        $picked = old('payment_methods', $client->payment_methods ?? $biz->allowedMethods());
+    @endphp
+    <fieldset class="card card-body space-y-3">
+        <legend class="sr-only">Accepted payment methods</legend>
+        <div><h2 class="text-base">Accepted payment methods</h2><p class="hint">Which payment options this client sees on new invoices. You can still narrow them on each invoice.</p></div>
+        <label class="flex items-center gap-2 text-sm"><input type="radio" name="payment_methods_custom" value="0" @checked(! $custom)> Use business defaults <span class="text-slate-500">({{ collect($biz->allowedMethods())->map(fn ($m) => \App\Support\PaymentMethods::label($m))->implode(', ') }})</span></label>
+        <label class="flex items-center gap-2 text-sm"><input type="radio" name="payment_methods_custom" value="1" @checked($custom)> Only allow:</label>
+        <div class="flex flex-wrap gap-x-5 gap-y-2 pl-6">
+            @foreach (\App\Support\PaymentMethods::INVOICE as $m)
+                @php $enabled = in_array($m, $biz->allowedMethods(), true); @endphp
+                <label @class(['inline-flex items-center gap-2 text-sm', 'opacity-50' => ! $enabled]) @unless($enabled) title="Turn this on in Settings → Payment methods first" @endunless>
+                    <input class="check" type="checkbox" name="payment_methods[]" value="{{ $m }}" @checked(in_array($m, $picked, true)) @disabled(! $enabled)> {{ \App\Support\PaymentMethods::label($m) }}</label>
+            @endforeach
+        </div>
+        @error('payment_methods')<p class="field-error">{{ $message }}</p>@enderror
+    </fieldset>
     @if (session('duplicate'))
         <label class="flex items-center gap-2 text-sm"><input class="check" type="checkbox" name="confirm_duplicate" value="1"> Create anyway</label>
     @endif

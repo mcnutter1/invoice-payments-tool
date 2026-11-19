@@ -10,8 +10,14 @@ class Business extends Model
 {
     protected $guarded = ['id', 'ulid'];
 
+    protected $hidden = ['ach_account_number_encrypted', 'stripe_secret_key_encrypted', 'stripe_webhook_secret_encrypted', 'venmo_api_token_hash', 'tax_id_encrypted', 'w9_tin_encrypted'];
+
     protected $casts = [
+        'venmo_auto_confirm' => 'boolean',
+        'stripe_live' => 'boolean',
+        'venmo_api_token_created_at' => 'datetime',
         'payment_methods' => 'array',
+        'tax_profile' => 'array',
         'branding' => 'array',
         'reminder_settings' => 'array',
         'show_tax_id' => 'boolean',
@@ -93,7 +99,33 @@ class Business extends Model
 
     public function allowedMethods(): array
     {
-        return $this->payment_methods ?: ['zelle', 'check'];
+        $methods = $this->payment_methods ?: ['zelle', 'check'];
+        if (! $this->stripe_secret_key_encrypted) $methods = array_diff($methods, ['card']);
+
+        return \App\Support\PaymentMethods::ordered($methods);
+    }
+
+    public function achAccountNumber(): ?string
+    {
+        return $this->ach_account_number_encrypted ? decrypt($this->ach_account_number_encrypted) : null;
+    }
+
+    public function stripeSecret(): ?string
+    {
+        return $this->stripe_secret_key_encrypted ? decrypt($this->stripe_secret_key_encrypted) : null;
+    }
+
+    public function stripeWebhookSecret(): ?string
+    {
+        return $this->stripe_webhook_secret_encrypted ? decrypt($this->stripe_webhook_secret_encrypted) : null;
+    }
+
+    /** Expected Venmo business-profile fee on a received amount (percent + fixed), rounded half-up. */
+    public function venmoFeeCents(int $amountCents): int
+    {
+        $fee = (int) round($amountCents * (float) $this->venmo_fee_percent / 100) + (int) $this->venmo_fee_fixed_cents;
+
+        return $amountCents > 0 ? max(0, min($fee, $amountCents - 1)) : 0;
     }
 
     public function addressLines(): array

@@ -11,3 +11,5 @@ Schedule::command('finance:backups')->hourlyAt(5)->withoutOverlapping(55);
 Schedule::command('finance:backups-weekly')->weeklyOn(1, '15:00')->withoutOverlapping(120);
 // The IRS usually announces next year's rate in December; check weekly so new rates (and mid-year changes) are picked up.
 Schedule::command('finance:mileage-rates')->weeklyOn(2, '13:00')->withoutOverlapping(30);
+// IRS inflation adjustments usually publish in Oct–Nov and the SSA wage base in October.
+Schedule::command('finance:tax-tables')->weeklyOn(3, '13:00')->withoutOverlapping(30);

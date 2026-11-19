@@ -35,7 +35,7 @@ class BusinessProvisioner
         ['4900', 'Discounts & Refunds Given', 'income', 'contra', 'discounts'],
         ['5000', 'Cost of Goods Sold', 'expense', 'cogs', 'cogs'],
         ['6000', 'Advertising & Marketing', 'expense', 'operating', null],
-        ['6100', 'Bank & Merchant Fees', 'expense', 'operating', null],
+        ['6100', 'Bank & Merchant Fees', 'expense', 'operating', 'merchant_fees'],
         ['6150', 'Bad Debt', 'expense', 'operating', 'bad_debt'],
         ['6200', 'Contract Labor', 'expense', 'operating', null],
         ['6300', 'Insurance', 'expense', 'operating', null],

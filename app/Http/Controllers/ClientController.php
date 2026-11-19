@@ -61,12 +61,23 @@ class ClientController extends Controller
             'notes' => ['nullable', 'string', 'max:5000'],
             'invoice_terms' => ['nullable', 'string', 'max:5000'],
             'external_id' => ['nullable', 'string', 'max:100'],
+            'payment_methods' => ['nullable', 'array'],
+            'payment_methods.*' => [Rule::in(\App\Support\PaymentMethods::INVOICE)],
         ];
+    }
+
+    /** null = follow the business's accepted methods. */
+    private function methods(Request $request, array $data): array
+    {
+        $data['payment_methods'] = $request->boolean('payment_methods_custom') ? \App\Support\PaymentMethods::ordered($data['payment_methods'] ?? []) : null;
+        if ($data['payment_methods'] === []) throw new \App\Exceptions\DomainException('Choose at least one payment method for this client, or use the business defaults.');
+
+        return $data;
     }
 
     public function store(Request $request)
     {
-        $data = $request->validate($this->rules());
+        $data = $this->methods($request, $request->validate($this->rules()));
         $data['tax_exempt'] = $request->boolean('tax_exempt');
         $dupes = Client::where('business_id', $this->biz()->id)
             ->where(fn ($q) => $q->where('display_name', $data['display_name'])->when($data['email'] ?? null, fn ($q, $e) => $q->orWhere('email', $e)))
@@ -126,7 +137,7 @@ class ClientController extends Controller
     public function update(Request $request, int $id)
     {
         $client = $this->client($id);
-        $data = $request->validate($this->rules());
+        $data = $this->methods($request, $request->validate($this->rules()));
         $data['tax_exempt'] = $request->boolean('tax_exempt');
         $before = $client->only(array_keys($data));
         $client->update($data);

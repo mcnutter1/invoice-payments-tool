@@ -124,7 +124,7 @@ class EmailComposer
             $url = url('/i/'.$raw);
             $buttons = [['label' => 'View invoice', 'url' => $url, 'track' => 'view'], ['label' => 'Download PDF', 'url' => $url.'?d=pdf', 'track' => 'pdf']];
             if ($payable && $kind === 'reminder') {
-                $buttons[] = ['label' => 'I’ve paid / mailed a check', 'url' => $url, 'track' => 'report'];
+                $buttons[] = ['label' => 'I’ve sent payment', 'url' => $url, 'track' => 'report'];
             }
             $subject = 'Invoice '.$invoice->number.' from '.$business->name().($kind === 'reminder' ? ' (reminder)' : '');
             $this->queue($business, $kind, $to, $subject, [
@@ -173,6 +173,7 @@ class EmailComposer
 
         $details = [
             ['Method', \App\Services\Payments\PaymentService::METHODS[$payment->method] ?? $payment->method],
+            ...($payment->method === 'card' && $payment->reference ? [['Card', $payment->reference]] : []),
             ['Date received', $payment->received_date->format('F j, Y')],
         ];
         foreach ($allocs as $a) {

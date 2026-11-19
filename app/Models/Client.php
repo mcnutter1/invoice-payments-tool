@@ -12,7 +12,7 @@ class Client extends Model
 
     protected $guarded = ['id'];
 
-    protected $casts = ['tax_exempt' => 'boolean'];
+    protected $casts = ['tax_exempt' => 'boolean', 'payment_methods' => 'array'];
 
     public function contacts(): HasMany { return $this->hasMany(Contact::class); }
     public function invoices(): HasMany { return $this->hasMany(Invoice::class); }

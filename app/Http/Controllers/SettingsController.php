@@ -35,6 +35,10 @@ class SettingsController extends Controller
             'zelleQr' => $b->zelle_qr_document_id
                 ? app(DocumentStore::class)->dataUri(\App\Models\PrivateDocument::where('business_id', $b->id)->find($b->zelle_qr_document_id))
                 : null,
+            'achLast4' => $b->ach_account_number_encrypted ? substr((string) $b->achAccountNumber(), -4) : null,
+            'cashAccounts' => \App\Models\ChartAccount::where('business_id', $b->id)->where('type', 'asset')->whereIn('subtype', ['bank', 'undeposited'])->where('is_active', true)->orderBy('code')->get(),
+            'stripeWebhookUrl' => url('/webhooks/stripe/'.$b->ulid),
+            'venmoApiUrl' => url('/api/v1/venmo/payments'),
         ]);
     }
 
@@ -128,12 +132,16 @@ class SettingsController extends Controller
         return back()->with('status', 'Branding saved. Preview the PDF to check it.');
     }
 
-    public function updatePayments(Request $request, DocumentStore $docs)
+    public function updatePayments(Request $request, DocumentStore $docs, \App\Services\Payments\BankDirectory $banks)
     {
         $b = $this->biz();
+        $request->merge(array_map(fn ($v) => is_string($v) ? preg_replace('/[\s-]+/', '', $v) : $v,
+            $request->only(['ach_routing_number', 'ach_wire_routing_number', 'ach_account_number'])));
+        if ($request->filled('ach_swift_code')) $request->merge(['ach_swift_code' => strtoupper(preg_replace('/\s+/', '', (string) $request->input('ach_swift_code')))]);
+        $routing = fn ($attr, $value, $fail) => \App\Services\Payments\BankDirectory::validRouting($value) ? null : $fail('That routing number is not valid (9 digits, ABA checksum).');
         $data = $request->validate([
             'payment_methods' => ['required', 'array', 'min:1'],
-            'payment_methods.*' => [Rule::in(['zelle', 'check'])],
+            'payment_methods.*' => [Rule::in(\App\Support\PaymentMethods::INVOICE)],
             'zelle_recipient_name' => ['nullable', 'required_if:payment_methods.*,zelle', 'string', 'max:120'],
             'zelle_email' => ['nullable', 'email'],
             'zelle_phone' => ['nullable', 'string', 'max:40'],
@@ -141,17 +149,69 @@ class SettingsController extends Controller
             'check_address' => ['nullable', 'string', 'max:500'],
             'zelle_qr' => ['nullable', 'file', 'max:1024'],
             'remove_zelle_qr' => ['nullable', 'boolean'],
+            'ach_account_name' => ['nullable', 'string', 'max:200'],
+            'ach_bank_name' => ['nullable', 'string', 'max:200'],
+            'ach_bank_address' => ['nullable', 'string', 'max:500'],
+            'ach_routing_number' => ['nullable', 'string', $routing],
+            'ach_wire_routing_number' => ['nullable', 'string', $routing],
+            'ach_account_number' => ['nullable', 'regex:/^\d{4,17}$/'],
+            'ach_account_type' => ['nullable', Rule::in(['checking', 'savings'])],
+            'ach_swift_code' => ['nullable', 'regex:/^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$/'],
+            'ach_instructions' => ['nullable', 'string', 'max:1000'],
+            'venmo_handle' => ['nullable', 'regex:/^@?[A-Za-z0-9_-]{5,30}$/'],
+            'venmo_fee_percent' => ['nullable', 'numeric', 'min:0', 'max:10'],
+            'venmo_fee_fixed' => ['nullable', 'numeric', 'min:0', 'max:5'],
+            'venmo_auto_confirm' => ['nullable', 'boolean'],
             'confirm_change' => ['accepted'],
-        ], ['confirm_change.accepted' => 'Confirm that you verified these payment instructions.']);
-        if (in_array('zelle', $data['payment_methods'], true) && empty($data['zelle_email']) && empty($data['zelle_phone'])) {
+        ], [
+            'confirm_change.accepted' => 'Confirm that you verified these payment instructions.',
+            'ach_account_number.regex' => 'Account numbers are 4–17 digits.',
+            'ach_swift_code.regex' => 'SWIFT/BIC codes are 8 or 11 characters (e.g. CHASUS33).',
+            'venmo_handle.regex' => 'Venmo usernames are 5–30 letters, numbers, dashes or underscores.',
+        ]);
+        $methods = $data['payment_methods'];
+        if (in_array('zelle', $methods, true) && empty($data['zelle_email']) && empty($data['zelle_phone'])) {
             return back()->withInput()->with('error', 'Zelle needs the email or US mobile number enrolled with your bank.');
         }
-        if (in_array('check', $data['payment_methods'], true) && empty($data['check_address']) && ! $b->addressLines()) {
+        if (in_array('check', $methods, true) && empty($data['check_address']) && ! $b->addressLines()) {
             return back()->withInput()->with('error', 'Checks need a mailing address.');
         }
-        $fields = ['payment_methods', 'zelle_recipient_name', 'zelle_email', 'zelle_phone', 'check_payee', 'check_address'];
+        if (in_array('ach', $methods, true) && (empty($data['ach_routing_number']) || (empty($data['ach_account_number']) && ! $b->ach_account_number_encrypted))) {
+            return back()->withInput()->with('error', 'ACH / wire needs the routing number and account number for the receiving account.');
+        }
+        if (in_array('venmo', $methods, true) && empty($data['venmo_handle'])) {
+            return back()->withInput()->with('error', 'Venmo needs your Venmo business username.');
+        }
+        if (in_array('card', $methods, true) && ! $b->stripe_secret_key_encrypted) {
+            return back()->withInput()->with('error', 'Connect Stripe below before offering card payments.');
+        }
+        $fields = ['payment_methods', 'zelle_recipient_name', 'zelle_email', 'zelle_phone', 'check_payee', 'check_address',
+            'ach_account_name', 'ach_bank_name', 'ach_bank_location', 'ach_bank_address', 'ach_routing_number', 'ach_wire_routing_number', 'ach_account_type', 'ach_swift_code', 'ach_instructions',
+            'venmo_handle', 'venmo_fee_percent', 'venmo_fee_fixed_cents', 'venmo_auto_confirm'];
         $before = $b->only($fields);
         $updates = array_intersect_key($data, array_flip($fields));
+        $updates['payment_methods'] = \App\Support\PaymentMethods::ordered($methods);
+        if (array_key_exists('venmo_handle', $data)) $updates['venmo_handle'] = $data['venmo_handle'] ? ltrim($data['venmo_handle'], '@') : null;
+        if ($request->has('venmo_fee_percent')) $updates['venmo_fee_percent'] = (float) ($data['venmo_fee_percent'] ?? 0);
+        if ($request->has('venmo_fee_fixed')) $updates['venmo_fee_fixed_cents'] = $this->cents($data['venmo_fee_fixed'] ?? 0);
+        if ($request->has('venmo_auto_confirm')) $updates['venmo_auto_confirm'] = $request->boolean('venmo_auto_confirm');
+        $acctChanged = ! empty($data['ach_account_number']);
+        if ($acctChanged) $updates['ach_account_number_encrypted'] = encrypt($data['ach_account_number']);
+        if ($request->boolean('remove_ach_account')) {
+            $updates['ach_account_number_encrypted'] = null;
+            $acctChanged = true;
+        }
+        // Fill the bank name from the routing (or SWIFT) directory unless the user typed their own.
+        $rn = $data['ach_routing_number'] ?? null;
+        $typed = $data['ach_bank_name'] ?? null;
+        $untouched = ! $typed || $typed === $b->ach_bank_name;
+        if ($rn && $untouched && (! $typed || $rn !== $b->ach_routing_number)) {
+            $hit = $banks->routing($rn) ?? (! empty($data['ach_swift_code']) ? $banks->swift($data['ach_swift_code']) : null);
+            $updates['ach_bank_name'] = $hit['bank_name'] ?? $typed;
+            $updates['ach_bank_location'] = $hit['location'] ?? null;
+        } elseif (array_key_exists('ach_routing_number', $data) && ! $rn) {
+            $updates['ach_bank_location'] = null;
+        }
         if ($request->hasFile('zelle_qr')) {
             $updates['zelle_qr_document_id'] = $docs->storeUpload($b, $request->file('zelle_qr'), 'zelle_qr', ['image/png', 'image/jpeg'])->id;
         } elseif ($request->boolean('remove_zelle_qr')) {
@@ -160,12 +220,84 @@ class SettingsController extends Controller
         $updates['payment_instructions_changed_at'] = now();
         $b->update($updates);
         [$bf, $af] = Audit::diff($before, $b->only($fields));
+        if ($acctChanged) $af = ($af ?? []) + ['ach_account_number' => 'changed (ends '.substr((string) $b->achAccountNumber(), -4).')'];
         Audit::log($b, 'business.payment_instructions_changed', $b, $bf, $af);
         $pending = EmailOutbox::where('business_id', $b->id)->where('status', 'queued')->whereIn('kind', ['invoice', 'reminder'])->count();
         $msg = 'Payment instructions saved. Already-issued invoices keep the instructions they were issued with.';
         if ($pending) $msg .= " Warning: {$pending} queued invoice email(s) reference invoices issued with the previous instructions.";
 
         return back()->with('status', $msg);
+    }
+
+    public function updateStripe(Request $request, \App\Services\Payments\StripePayments $stripe)
+    {
+        $b = $this->biz();
+        if ($request->boolean('disconnect')) {
+            $b->update(['stripe_secret_key_encrypted' => null, 'stripe_webhook_secret_encrypted' => null, 'stripe_account_label' => null, 'stripe_live' => false,
+                'payment_methods' => array_values(array_diff($b->payment_methods ?? [], ['card']))]);
+            Audit::log($b, 'business.stripe_disconnected', $b);
+
+            return back()->with('status', 'Stripe disconnected. Card payments are no longer offered; existing payments are unchanged.');
+        }
+        $data = $request->validate([
+            'stripe_secret_key' => ['nullable', 'string', 'max:255'],
+            'stripe_webhook_secret' => ['nullable', 'string', 'max:255', 'regex:/^whsec_[A-Za-z0-9]+$/'],
+            'stripe_deposit_account_id' => ['nullable', 'integer', Rule::exists('chart_accounts', 'id')->where('business_id', $b->id)->where('type', 'asset')],
+        ], ['stripe_webhook_secret.regex' => 'Webhook signing secrets start with whsec_.']);
+        $updates = ['stripe_deposit_account_id' => $data['stripe_deposit_account_id'] ?? null];
+        $key = trim((string) ($data['stripe_secret_key'] ?? ''));
+        if ($key !== '') {
+            if (! \App\Services\Payments\StripeGateway::looksLikeSecret($key)) {
+                return back()->with('error', 'Use a Stripe secret key (sk_live_… / sk_test_…) or a restricted key (rk_…).');
+            }
+            $updates['stripe_account_label'] = $stripe->verifyKey($key);
+            $updates['stripe_secret_key_encrypted'] = encrypt($key);
+            $updates['stripe_live'] = str_contains($key, '_live_');
+        } elseif (! $b->stripe_secret_key_encrypted) {
+            return back()->with('error', 'Enter your Stripe secret key.');
+        }
+        if (! empty($data['stripe_webhook_secret'])) $updates['stripe_webhook_secret_encrypted'] = encrypt($data['stripe_webhook_secret']);
+        $b->update($updates);
+        Audit::log($b, 'business.stripe_updated', $b, null, ['key_changed' => $key !== '', 'webhook_secret_changed' => ! empty($data['stripe_webhook_secret']), 'live' => $b->stripe_live, 'deposit_account_id' => $b->stripe_deposit_account_id]);
+
+        return back()->with('status', 'Stripe connected'.($b->stripe_account_label ? ' ('.$b->stripe_account_label.')' : '').'. Turn on “Credit / debit card” under accepted methods to offer it.');
+    }
+
+    public function venmoToken(Request $request)
+    {
+        $b = $this->biz();
+        if ($request->boolean('revoke')) {
+            $b->update(['venmo_api_token_hash' => null, 'venmo_api_token_created_at' => null]);
+            Audit::log($b, 'business.venmo_token_revoked', $b);
+
+            return back()->with('status', 'Venmo feed token revoked.');
+        }
+        $token = \App\Services\Payments\VenmoFeed::newToken();
+        $b->update(['venmo_api_token_hash' => hash('sha256', $token), 'venmo_api_token_created_at' => now()]);
+        Audit::log($b, 'business.venmo_token_created', $b);
+
+        return redirect('/b/'.$b->ulid.'/settings#venmo-feed')->with('venmo_token', $token)->with('status', 'New Venmo feed token created. Copy it now — it is shown only once.');
+    }
+
+    /** Settings helper: bank name for a routing number or SWIFT code. */
+    public function bankLookup(Request $request, \App\Services\Payments\BankDirectory $banks)
+    {
+        $rn = preg_replace('/\D/', '', (string) $request->query('routing'));
+        $swift = strtoupper(preg_replace('/\s+/', '', (string) $request->query('swift')));
+        if ($rn !== '') {
+            if (! \App\Services\Payments\BankDirectory::validRouting($rn)) return response()->json(['valid' => false, 'message' => 'Not a valid routing number.']);
+            $hit = $banks->routing($rn);
+
+            return response()->json(['valid' => true] + ($hit ?? ['bank_name' => null, 'location' => null, 'message' => 'Valid routing number; bank name not found.']));
+        }
+        if ($swift !== '') {
+            if (! \App\Services\Payments\BankDirectory::validSwift($swift)) return response()->json(['valid' => false, 'message' => 'Not a valid SWIFT/BIC code.']);
+            $hit = $banks->swift($swift);
+
+            return response()->json(['valid' => true] + ($hit ?? ['bank_name' => null, 'location' => null, 'message' => 'Valid format; bank name not found.']));
+        }
+
+        return response()->json(['valid' => false, 'message' => 'Enter a routing number or SWIFT code.'], 422);
     }
 
     public function updateEmail(Request $request)

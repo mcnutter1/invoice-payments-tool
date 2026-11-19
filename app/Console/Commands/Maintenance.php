@@ -35,7 +35,7 @@ class Maintenance extends Command
             $ended = app(\App\Services\Contracts\ContractService::class)->expireEndedTerms();
             // Uploaded bank CSVs are only needed during the import wizard.
             $csv = 0;
-            foreach (PrivateDocument::where('kind', 'import_csv')->where('created_at', '<', now()->subDays(7))->get() as $doc) {
+            foreach (PrivateDocument::whereIn('kind', ['import_csv', 'import_subscription'])->where('created_at', '<', now()->subDays(7))->get() as $doc) {
                 @unlink($doc->absolutePath());
                 $doc->delete();
                 $csv++;

@@ -42,7 +42,11 @@
     </div>
     <aside class="space-y-4">
         <div class="card card-body text-sm"><dl class="dl">
+            <dt>Received (gross)</dt><dd>@money($payment->amount_cents)</dd>
+            @if ($payment->fee_cents)<dt>Processing fee</dt><dd>−@money($payment->fee_cents) <span class="text-xs text-slate-500">{{ $payment->feeAccount?->name ?? 'Bank & Merchant Fees' }}</span></dd>
+            <dt>Net deposit</dt><dd class="font-semibold">@money($payment->netCents())</dd>@endif
             <dt>Deposit account</dt><dd>{{ $payment->depositAccount->label() }}</dd>
+            @if ($payment->processor)<dt>Verified by</dt><dd>{{ $payment->processor === 'stripe' ? 'Stripe' : 'Venmo feed' }} <span class="font-mono text-xs text-slate-500">{{ \Illuminate\Support\Str::after($payment->external_id, ':') }}</span></dd>@endif
             @if ($payment->check_number)<dt>Check #</dt><dd>{{ $payment->check_number }}</dd>@endif
             @if ($payment->reference)<dt>Reference</dt><dd>{{ $payment->reference }}</dd>@endif
             @if ($payment->deposited_date)<dt>Deposited</dt><dd>{{ $payment->deposited_date->format('M j, Y') }}</dd>@endif
@@ -55,6 +59,18 @@
             @if ($payment->status === 'deposited' && $ctx->can('payments.record'))
                 <form method="post" action="{{ $bu }}/payments/{{ $payment->id }}/clear" class="card card-body flex items-end gap-2">@csrf
                     <div><label class="label" for="cl-date">Cleared on</label><input class="input" id="cl-date" type="date" name="date" value="{{ $biz->localToday()->toDateString() }}"></div><button class="btn">Mark cleared</button></form>
+            @endif
+            @if ($ctx->can('payments.record'))
+                <details class="card" @if($errors->has('amount') && old('note') !== null) open @endif>
+                    <summary class="card-head cursor-pointer list-none"><h3>Record a fee</h3><span class="text-xs text-slate-500">e.g. wire fee on the statement</span></summary>
+                    <form method="post" action="{{ $bu }}/payments/{{ $payment->id }}/fee" class="card-body space-y-2 pt-0">@csrf
+                        <input class="input" name="amount" type="number" step="0.01" min="0.01" placeholder="Fee amount ($)" required aria-label="Fee amount">
+                        <input class="input" type="date" name="date" value="{{ $biz->localToday()->toDateString() }}" aria-label="Fee date">
+                        <input class="input" name="note" placeholder="Note (e.g. Incoming wire fee)" aria-label="Note">
+                        <button class="btn">Record fee</button>
+                        <p class="hint">Posts to Bank &amp; Merchant Fees and reduces the cash received. The invoice stays paid in full.</p>
+                    </form>
+                </details>
             @endif
             @if ($ctx->can('payments.reverse'))
                 @if ($unapplied > 0)
@@ -69,7 +85,7 @@
                 @endif
                 <form method="post" action="{{ $bu }}/payments/{{ $payment->id }}/reverse" class="card card-body space-y-2" data-confirm="Reverse this payment? All allocations are reversed and invoices reopen.">@csrf
                     <h3>Reverse payment</h3>
-                    <select class="input" name="kind" aria-label="Reason type"><option value="returned">Returned / bounced check</option><option value="error">Recorded in error</option></select>
+                    <select class="input" name="kind" aria-label="Reason type"><option value="returned">Returned / bounced / charged back</option><option value="error">Recorded in error</option></select>
                     <input class="input" name="reason" placeholder="Explanation" required aria-label="Explanation">
                     <button class="btn btn-danger">Reverse payment</button>
                 </form>

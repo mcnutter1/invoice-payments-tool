@@ -35,6 +35,7 @@ class ReportService
         'sales-tax' => ['Sales tax liability', 'reports.pnl.view'],
         'recurring-forecast' => ['Recurring billing forecast', 'reports.ar.view'],
         'contract-values' => ['Contract values', 'reports.ar.view'],
+        'tax-estimate' => ['Tax estimate', 'reports.pnl.view'],
     ];
 
     public function accounts(Business $b): Collection

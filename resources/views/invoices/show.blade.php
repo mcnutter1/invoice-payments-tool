@@ -24,6 +24,9 @@
         @endif
         @if ($invoice->isIssued() && $ctx->can('invoices.send'))<a class="btn btn-primary" href="{{ $bu }}/invoices/{{ $invoice->id }}/send">{{ $outbox->isEmpty() ? 'Send' : 'Send again / remind' }}</a>@endif
         @if ($invoice->isIssued() && $invoice->balance_cents > 0 && $ctx->can('payments.record'))<a class="btn" href="{{ $bu }}/payments/new?invoice={{ $invoice->id }}">Record payment</a>@endif
+        @if ($invoice->isIssued() && $invoice->balance_cents >= 50 && $invoice->schedule?->hasAutopay() && $ctx->can('payments.record'))
+            <form method="post" action="{{ $bu }}/invoices/{{ $invoice->id }}/charge-card" data-confirm="Charge {{ \App\Support\Money::format($invoice->balance_cents) }} to the client's saved {{ $invoice->schedule->autopay_card_label }}?">@csrf<button class="btn">Charge saved card</button></form>
+        @endif
         @if ($ctx->can('invoices.manage'))<form method="post" action="{{ $bu }}/invoices/{{ $invoice->id }}/duplicate">@csrf<button class="btn btn-ghost">Duplicate</button></form>@endif
     </div>
 </div>
@@ -93,7 +96,7 @@
             <table class="tbl"><thead><tr><th>Date</th><th>Source</th><th class="num">Amount</th><th>Status</th><th></th></tr></thead><tbody>
             @foreach ($invoice->allocations as $a)
                 <tr><td>{{ $a->applied_date->format('M j, Y') }}</td>
-                    <td>@if($a->payment)<a href="{{ $bu }}/payments/{{ $a->payment_id }}">{{ ucfirst($a->payment->method) }} payment</a>@else {{ $a->creditNote?->kind === 'write_off' ? 'Write-off' : 'Credit note' }} {{ $a->creditNote?->number }} @endif</td>
+                    <td>@if($a->payment)<a href="{{ $bu }}/payments/{{ $a->payment_id }}">{{ \App\Support\PaymentMethods::label($a->payment->method) }} payment</a>@if($a->payment->fee_cents)<span class="text-xs text-slate-500"> · fee @money($a->payment->fee_cents)</span>@endif @else {{ $a->creditNote?->kind === 'write_off' ? 'Write-off' : 'Credit note' }} {{ $a->creditNote?->number }} @endif</td>
                     <td class="num">@money($a->amount_cents)</td><td>@include('partials.status', ['s' => $a->status === 'active' ? 'posted' : 'reversed'])</td>
                     <td class="text-right">@if($a->payment_id && $a->status === 'active' && $ctx->can('payments.reverse'))
                         <form method="post" action="{{ $bu }}/allocations/{{ $a->id }}/unapply" class="inline-flex gap-1" data-confirm="Move this amount back to the client's unapplied credit?">@csrf<input class="input input-sm w-36" name="reason" placeholder="Reason" required aria-label="Reason"><button class="btn btn-sm">Unapply</button></form>
@@ -105,7 +108,7 @@
         @if ($invoice->claims->isNotEmpty())
         <div class="card"><div class="card-head"><h2>Client payment reports</h2></div><div class="card-body space-y-2 text-sm">
             @foreach ($invoice->claims as $c)
-                <div class="flex justify-between"><a href="{{ $bu }}/claims/{{ $c->id }}">{{ ucfirst($c->method) }} · @money($c->reported_amount_cents) · {{ $c->reported_date->format('M j') }}</a>@include('partials.status', ['s' => $c->status])</div>
+                <div class="flex justify-between"><a href="{{ $bu }}/claims/{{ $c->id }}">{{ \App\Support\PaymentMethods::label($c->method) }} · @money($c->reported_amount_cents) · {{ $c->reported_date->format('M j') }}</a>@include('partials.status', ['s' => $c->status])</div>
             @endforeach
         </div></div>
         @endif
@@ -178,7 +181,8 @@
             <dl class="dl">
                 <dt>Total</dt><dd>@money($invoice->total_cents)</dd>
                 <dt>Balance</dt><dd class="font-semibold">@money($invoice->balance_cents)</dd>
-                <dt>Methods</dt><dd>{{ collect($invoice->payment_methods ?? [])->map(fn ($m) => $m === 'zelle' ? 'Zelle' : 'Check')->implode(', ') ?: '—' }}</dd>
+                <dt>Methods</dt><dd>{{ collect($invoice->isDraft() ? ($invoice->payment_methods ?? []) : ($invoice->instructions_snapshot['methods'] ?? $invoice->payment_methods ?? []))->map(fn ($m) => \App\Support\PaymentMethods::label($m))->implode(', ') ?: '—' }}</dd>
+                @if ($invoice->schedule?->hasAutopay())<dt>Autopay</dt><dd>{{ $invoice->schedule->autopay_card_label }}</dd>@endif
                 @if ($invoice->po_number)<dt>PO</dt><dd>{{ $invoice->po_number }}</dd>@endif
                 @if ($invoice->service_start)<dt>Service</dt><dd>{{ $invoice->service_start->format('M j') }} – {{ $invoice->service_end?->format('M j, Y') }}</dd>@endif
                 @if ($invoice->contractVersion)<dt>Agreement</dt><dd><a href="{{ $bu }}/contracts/{{ $invoice->contract_id }}">{{ $invoice->contractVersion->contract->number }} v{{ $invoice->contractVersion->version }}</a></dd>@endif

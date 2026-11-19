@@ -4,8 +4,17 @@
 |---|---|---|
 | McNutt Cloud auth | `Services/Auth/McNuttAuthGateway` | Settings → Automation monitor and `/platform`: disabled / unconfigured / healthy / failed |
 | McNutt Cloud notifications | `Services/Notifications/McNuttNotificationGateway` | same |
+| Stripe (card payments, autopay) | `Services/Payments/StripeGateway` + `StripePayments` | Settings → Stripe (live/test chip, account label) |
+| Venmo receipt feed | `Services/Payments/VenmoFeed`, `POST /api/v1/venmo/payments` | Settings → Venmo feed (token active/none) |
+| Bank directory (routing → bank name) | `Services/Payments/BankDirectory` | lookups cached 30 days; failures fall back to manual entry |
 
 Development drivers (`AUTH_DRIVER=dev`, `NOTIFICATIONS_DRIVER=log`) are refused when `APP_ENV=production`.
+
+## Payment processors
+
+- **Stripe** — per-business secret key and webhook secret (encrypted). Clients pay on hosted Stripe Checkout (`POST /i/v/{ulid}/card` → 303; CSP `form-action` allows `https://checkout.stripe.com`). The return URL verifies the session server-side; the webhook `POST /webhooks/stripe/{business-ulid}` (`checkout.session.completed`, `payment_intent.succeeded`, `payment_intent.payment_failed`) is the safety net. Payments are idempotent on `payments.external_id = stripe:{pi}`. Gross → AR, Stripe fee (balance transaction) → *Bank & Merchant Fees* (`merchant_fees`), net → payout account. Recurring schedules with *card autopay* save the card (`setup_future_usage=off_session`) and charge it off-session after each auto-issued invoice; on failure the invoice is emailed instead.
+- **Venmo** — no public payments API exists, so a business-controlled automation posts receipts with `Authorization: Bearer vnm_…` (`transaction_id`, `amount`, optional `date`, `note`, `sender`, `fee`). Matching: invoice number in the note, else a single open Venmo report with the same amount. Auto-record is opt-in; otherwise a feed-verified report waits in Payments → Client payment reports.
+- **ACH / wire** — instructions only; confirmed manually. Bank name is looked up from `FINANCE_ROUTING_LOOKUP_URL` (default bankrouting.io, Federal Reserve directory data) and, for SWIFT, `FINANCE_SWIFT_LOOKUP_URL`/`FINANCE_SWIFT_LOOKUP_KEY` (API Ninjas when a key is set; otherwise a built-in list of major US banks).
 
 ## Notification service
 

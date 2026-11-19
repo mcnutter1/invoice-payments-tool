@@ -24,7 +24,7 @@ use Illuminate\Support\Facades\DB;
 
 class PaymentService
 {
-    public const METHODS = ['zelle' => 'Zelle', 'check' => 'Check', 'cash' => 'Cash', 'other' => 'Other'];
+    public const METHODS = ['zelle' => 'Zelle', 'check' => 'Check', 'ach' => 'ACH / wire', 'venmo' => 'Venmo', 'card' => 'Card', 'cash' => 'Cash', 'other' => 'Other'];
 
     public function __construct(
         private readonly Ledger $ledger,
@@ -33,10 +33,21 @@ class PaymentService
         private readonly Context $ctx,
     ) {}
 
-    /** Default receipt account: checks/cash go to Undeposited Funds, Zelle/other straight to the bank. */
+    /** Default receipt account: checks/cash go to Undeposited Funds, card to the Stripe payout account, everything else straight to the bank. */
     public function defaultDepositAccount(Business $b, string $method): ChartAccount
     {
+        if ($method === 'card' && $b->stripe_deposit_account_id) {
+            $acct = ChartAccount::where('business_id', $b->id)->find($b->stripe_deposit_account_id);
+            if ($acct) return $acct;
+        }
+
         return in_array($method, ['check', 'cash'], true) ? $b->account('undeposited') : $b->account('bank');
+    }
+
+    /** Suggested processing fee for a manually confirmed receipt (ACH/wire fees are entered by hand). */
+    public function suggestedFee(Business $b, string $method, int $amountCents): int
+    {
+        return $method === 'venmo' ? $b->venmoFeeCents($amountCents) : 0;
     }
 
     /**
@@ -54,6 +65,13 @@ class PaymentService
             $this->ledger->assertOpen($business, $date);
             $method = $data['method'];
             if (! array_key_exists($method, self::METHODS)) throw new DomainException('Unsupported method.');
+            $fee = max(0, (int) ($data['fee_cents'] ?? 0));
+            if ($fee >= $amount) throw new DomainException('The processing fee must be less than the payment amount.');
+            if (! empty($data['external_id'])) {
+                $existing = Payment::where('business_id', $business->id)->where('external_id', $data['external_id'])->first();
+                if ($existing) return $existing; // processor retries / webhooks
+            }
+            $feeAccount = $fee > 0 ? $business->account('merchant_fees') : null;
 
             $deposit = ! empty($data['deposit_account_id'])
                 ? ChartAccount::where('business_id', $business->id)->where('type', 'asset')->whereIn('subtype', ['bank', 'undeposited'])->findOrFail($data['deposit_account_id'])
@@ -87,11 +105,18 @@ class PaymentService
                 'memo' => $data['memo'] ?? null,
                 'claim_id' => $claim?->id,
                 'recorded_by' => $this->ctx->user?->id,
+                'fee_cents' => $fee,
+                'fee_account_id' => $feeAccount?->id,
+                'processor' => $data['processor'] ?? null,
+                'external_id' => $data['external_id'] ?? null,
             ]);
             $payment->business_id = $business->id;
             $payment->save();
 
-            $lines = [['account' => $deposit, 'debit' => $amount, 'client_id' => $client->id, 'description' => 'Payment from '.$client->display_name]];
+            $lines = [['account' => $deposit, 'debit' => $amount - $fee, 'client_id' => $client->id, 'description' => 'Payment from '.$client->display_name]];
+            if ($fee > 0) {
+                $lines[] = ['account' => $feeAccount, 'debit' => $fee, 'client_id' => $client->id, 'description' => 'Processing fee · '.self::METHODS[$method]];
+            }
             foreach ($allocations as $invoiceId => $cents) {
                 $lines[] = ['account' => $business->account('ar'), 'credit' => $cents, 'client_id' => $client->id, 'invoice_id' => $invoiceId, 'description' => 'Applied to '.$invoices[$invoiceId]->number];
             }
@@ -115,7 +140,7 @@ class PaymentService
                 $inv = $this->invoices->refreshBalance($invoices[$invoiceId]);
                 $this->projection->syncInvoice($inv, $date, 'payment:'.$payment->id);
             }
-            Audit::log($business, 'payment.recorded', $payment, null, ['amount_cents' => $amount, 'allocations' => $allocations, 'claim_id' => $claim?->id]);
+            Audit::log($business, 'payment.recorded', $payment, null, ['amount_cents' => $amount, 'fee_cents' => $fee, 'allocations' => $allocations, 'claim_id' => $claim?->id, 'processor' => $payment->processor]);
 
             if (! empty($data['send_receipt'])) {
                 DB::afterCommit(fn () => app(EmailComposer::class)->queueReceipt($payment->fresh()));
@@ -194,8 +219,8 @@ class PaymentService
             if ($payment->deposit_account_id !== $undeposited->id) throw new DomainException('This payment was received directly into a bank account.');
             if ($bank->business_id !== $business->id || $bank->subtype !== 'bank') throw new DomainException('Choose a bank account.');
             $entry = $this->ledger->post($business, 'payment:'.$payment->id.':deposit', $date, 'Deposit · '.self::METHODS[$payment->method].($payment->check_number ? ' #'.$payment->check_number : ''), [
-                ['account' => $bank, 'debit' => $payment->amount_cents, 'client_id' => $payment->client_id],
-                ['account' => $undeposited, 'credit' => $payment->amount_cents, 'client_id' => $payment->client_id],
+                ['account' => $bank, 'debit' => $payment->netCents(), 'client_id' => $payment->client_id],
+                ['account' => $undeposited, 'credit' => $payment->netCents(), 'client_id' => $payment->client_id],
             ], ['source_type' => 'payment', 'source_id' => $payment->id]);
             $payment->status = 'deposited';
             $payment->deposited_date = $date;
@@ -235,7 +260,10 @@ class PaymentService
                 ? JournalEntry::find($payment->deposit_journal_entry_id)->lines()->where('debit_cents', '>', 0)->value('account_id')
                 : $payment->deposit_account_id;
             $allocs = PaymentAllocation::where('business_id', $business->id)->where('payment_id', $payment->id)->where('status', 'active')->lockForUpdate()->get();
-            $lines = [['account' => $cashAccount, 'credit' => $payment->amount_cents, 'client_id' => $payment->client_id, 'description' => ucfirst($kind).' payment reversal']];
+            $lines = [['account' => $cashAccount, 'credit' => $payment->netCents(), 'client_id' => $payment->client_id, 'description' => ucfirst($kind).' payment reversal']];
+            if ($payment->fee_cents > 0) {
+                $lines[] = ['account' => $payment->fee_account_id ?: $business->account('merchant_fees'), 'credit' => $payment->fee_cents, 'client_id' => $payment->client_id, 'description' => 'Processing fee reversal'];
+            }
             $applied = 0;
             foreach ($allocs as $a) {
                 $lines[] = ['account' => $business->account('ar'), 'debit' => $a->amount_cents, 'client_id' => $payment->client_id, 'invoice_id' => $a->invoice_id];
@@ -294,6 +322,32 @@ class PaymentService
         });
     }
 
+    /** A fee discovered after recording (e.g. an incoming-wire fee on the bank statement): expense it against the account holding the funds. */
+    public function addFee(Payment $payment, int $cents, string $date, ?string $note = null): Payment
+    {
+        return DB::transaction(function () use ($payment, $cents, $date, $note) {
+            $payment = Payment::where('business_id', $payment->business_id)->lockForUpdate()->findOrFail($payment->id);
+            $business = Business::findOrFail($payment->business_id);
+            if ($payment->status === 'reversed') throw new DomainException('Payment is reversed.');
+            if ($cents <= 0 || $payment->fee_cents + $cents >= $payment->amount_cents) throw new DomainException('Enter a fee smaller than the payment amount.');
+            $cash = $payment->deposit_journal_entry_id
+                ? JournalEntry::find($payment->deposit_journal_entry_id)->lines()->where('debit_cents', '>', 0)->value('account_id')
+                : $payment->deposit_account_id;
+            $feeAccount = $payment->fee_account_id ?: $business->account('merchant_fees')->id;
+            $n = JournalEntry::where('business_id', $business->id)->where('source_key', 'like', 'payment:'.$payment->id.':fee:%')->count() + 1;
+            $this->ledger->post($business, 'payment:'.$payment->id.':fee:'.$n, $date, 'Processing fee · '.self::METHODS[$payment->method].' payment #'.$payment->id, [
+                ['account' => $feeAccount, 'debit' => $cents, 'client_id' => $payment->client_id, 'description' => $note ?: 'Processing fee'],
+                ['account' => $cash, 'credit' => $cents, 'client_id' => $payment->client_id],
+            ], ['source_type' => 'payment', 'source_id' => $payment->id, 'reason' => $note]);
+            $payment->fee_cents += $cents;
+            $payment->fee_account_id = $feeAccount;
+            $payment->save();
+            Audit::log($business, 'payment.fee_added', $payment, null, ['fee_cents' => $cents], $note);
+
+            return $payment;
+        });
+    }
+
     // ----- Client payment claims -----
 
     public function confirmClaim(PaymentClaim $claim, array $data): Payment
@@ -318,6 +372,9 @@ class PaymentService
                 'reference' => $data['reference'] ?? $claim->reference,
                 'check_number' => $claim->check_number,
                 'memo' => 'Confirmed client payment report #'.$claim->id,
+                'fee_cents' => $data['fee_cents'] ?? 0,
+                'external_id' => $claim->external_id,
+                'processor' => $claim->source === 'venmo_api' ? 'venmo_api' : null,
                 'send_receipt' => $data['send_receipt'] ?? true,
             ], $apply > 0 ? [$invoice->id => $apply] : [], $claim);
             $claim->status = 'confirmed';
