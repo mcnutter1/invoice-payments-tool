@@ -13,7 +13,7 @@
     <div class="metric"><div class="metric-label">Tax from this business {{ $e['year'] }}</div><div class="metric-value">{{ $M($s['business_tax']) }}</div>
         <div class="metric-note">Estimates paid {{ $M($s['paid']) }} · {{ $s['balance'] >= 0 ? 'still to set aside '.$M($s['balance']) : 'ahead by '.$M(-$s['balance']) }}@if ($s['effective_rate'] !== null)<br>≈ {{ round($s['effective_rate'] * 100, 1) }}% of business profit @endif</div></div>
     <div class="metric"><div class="metric-label">Total tax — whole return</div><div class="metric-value">{{ $M($s['return_total']) }}</div>
-        <div class="metric-note">Federal {{ $M($e['settlement']['federal']['total']) }} · State {{ $M($e['settlement']['state']['total']) }} · incl. W-2 &amp; other income@if($s['payroll'])<br>Payroll {{ $M($s['payroll']) }} paid separately @endif</div></div>
+        <div class="metric-note">Federal {{ $M($e['settlement']['federal']['total']) }} · State {{ $M($e['settlement']['state']['total']) }} · incl. W-2 &amp; other income @if ($s['payroll'])<br>Payroll {{ $M($s['payroll']) }} paid separately @endif</div></div>
     <div class="metric"><div class="metric-label">{{ $s['return_balance'] >= 0 ? 'Owed with the return' : 'Expected refund' }}</div>
         <div @class(['metric-value', 'text-red-700' => $s['return_balance'] > 0, 'text-emerald-700' => $s['return_balance'] < 0])>{{ $M(abs($s['return_balance'])) }}</div>
         <div class="metric-note">After withholding and estimated payments · see <a href="#settlement">owed or refunded</a></div></div>
