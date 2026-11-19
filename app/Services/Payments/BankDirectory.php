@@ -22,6 +22,16 @@ class BankDirectory
         'BKTR' => 'Deutsche Bank Trust Company Americas',
     ];
 
+    /** Common routing numbers the online directory is missing. */
+    private const KNOWN_ABA = [
+        '021202337' => ['JPMorgan Chase Bank, N.A.', 'NJ'],
+        '021100361' => ['JPMorgan Chase Bank, N.A.', 'CT'],
+        '022300173' => ['JPMorgan Chase Bank, N.A.', 'NY'],
+        '021000322' => ['Bank of America, N.A.', 'NY'],
+        '021200339' => ['Bank of America, N.A.', 'NJ'],
+        '011000138' => ['Bank of America, N.A.', 'MA'],
+    ];
+
     public static function validRouting(?string $rn): bool
     {
         if (! preg_match('/^\d{9}$/', (string) $rn)) return false;
@@ -41,9 +51,7 @@ class BankDirectory
     {
         if (! self::validRouting($rn)) return null;
         $url = (string) config('finance.banks.routing_lookup_url');
-        if ($url === '') return null;
-
-        return $this->cached('aba:'.$rn, function () use ($url, $rn) {
+        $remote = $url === '' ? null : $this->cached('aba:'.$rn, function () use ($url, $rn) {
             $res = Http::timeout((int) config('finance.banks.timeout', 4))->acceptJson()->get(str_replace('{number}', $rn, $url));
             if ($res->status() === 404) return false;
             if (! $res->ok()) return null;
@@ -53,6 +61,10 @@ class BankDirectory
 
             return ['bank_name' => self::titleCase($name), 'location' => self::location($d['city'] ?? null, $d['state'] ?? null)];
         });
+        if ($remote) return $remote;
+        [$name, $state] = self::KNOWN_ABA[$rn] ?? [null, null];
+
+        return $name ? ['bank_name' => $name, 'location' => $state] : null;
     }
 
     /** @return array{bank_name:string, location:?string}|null */

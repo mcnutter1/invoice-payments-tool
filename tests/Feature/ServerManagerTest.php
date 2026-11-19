@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Services\ServerManager\Pairing;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class ServerManagerTest extends TestCase
@@ -66,9 +68,63 @@ class ServerManagerTest extends TestCase
     public function test_unknown_action_and_guarded_migrate(): void
     {
         $this->signed(['action' => 'nope'])->assertStatus(400)->assertExactJson(['ok' => false, 'error' => 'unknown action']);
-        $this->signed(['action' => 'enroll', 'challenge' => 'x'])->assertStatus(400);
+        $this->signed(['action' => 'enroll', 'challenge' => 'x'])->assertStatus(403)->assertJsonPath('error', 'invalid challenge');
         $this->signed(['action' => 'migrate'])->assertStatus(400);
         $this->signed(['action' => 'migrate', 'confirm' => true])->assertOk()->assertJsonPath('data.migrated', true)->assertJsonPath('data.applied', []);
+    }
+
+    private function managerToken(string $managerKey, array $payload): string
+    {
+        $json = json_encode($payload);
+        $b64 = fn ($s) => rtrim(strtr(base64_encode($s), '+/', '-_'), '=');
+
+        return $b64($json).'.'.$b64(sodium_crypto_sign_detached($json, sodium_crypto_sign_secretkey($managerKey)));
+    }
+
+    public function test_settings_page_pairs_with_signed_tokens_and_hands_over_generated_secret_once(): void
+    {
+        config(['finance.srvmgr.token' => '']);
+        $manager = sodium_crypto_sign_keypair();
+        $otherManager = sodium_crypto_sign_keypair();
+        $pub = rtrim(strtr(base64_encode(sodium_crypto_sign_publickey($manager)), '+/', '-_'), '=');
+        Http::fake(['manage.mcnutt.cloud/api/pair/pubkey' => Http::response(['ok' => true, 'data' => ['pubkey' => $pub, 'alg' => 'ed25519']])]);
+        $admin = $this->makeUser('u_root', null, ['admin', 'user']);
+
+        $this->signIn($this->makeUser('u_plain'))->get('/platform/server-manager')->assertForbidden();
+        $this->signIn($admin)->get('/platform/server-manager')->assertOk()->assertSee('Not paired');
+        // Nothing is accepted before pairing, even when signed with the generated secret.
+        $this->signed(['action' => 'health'], secret: app(Pairing::class)->secret())->assertStatus(401);
+
+        $forged = $this->managerToken($otherManager, ['typ' => 'unlock', 'jti' => 'j1', 'exp' => time() + 600]);
+        $this->signIn($admin)->post('/platform/server-manager/unlock', ['unlock_token' => $forged])->assertSessionHas('error');
+        $expired = $this->managerToken($manager, ['typ' => 'unlock', 'jti' => 'j1', 'exp' => time() - 1]);
+        $this->signIn($admin)->post('/platform/server-manager/unlock', ['unlock_token' => $expired])->assertSessionHas('error');
+
+        $unlock = $this->managerToken($manager, ['typ' => 'unlock', 'jti' => 'jti-123', 'exp' => time() + 600]);
+        $this->signIn($admin)->post('/platform/server-manager/unlock', ['unlock_token' => $unlock])->assertSessionHas('status');
+        $state = app(Pairing::class)->state();
+        $this->signIn($admin)->get('/platform/server-manager')->assertOk()->assertSee($state['payload']);
+
+        // The enrollment payload is signed by the app and bound to the manager's jti.
+        $appPub = json_decode(Pairing::b64d(explode('.', $state['payload'])[0]), true)['app_pub'];
+        $payload = Pairing::verify($state['payload'], $appPub);
+        $this->assertSame(['enroll', 'jti-123', $state['challenge'], url('/srvmgr/helper')], [$payload['typ'], $payload['jti'], $payload['challenge'], $payload['url']]);
+
+        $enroll = fn (array $extra) => $this->postJson('/srvmgr/helper', ['action' => 'enroll', 'challenge' => $state['challenge'], 'jti' => 'jti-123'] + $extra);
+        $enroll([])->assertStatus(403);
+        $enroll(['claim' => $this->managerToken($manager, ['typ' => 'claim', 'jti' => 'other', 'challenge' => $state['challenge'], 'exp' => time() + 60])])->assertStatus(403);
+        $enroll(['claim' => $this->managerToken($otherManager, ['typ' => 'claim', 'jti' => 'jti-123', 'challenge' => $state['challenge'], 'exp' => time() + 60])])->assertStatus(403);
+        $claim = $this->managerToken($manager, ['typ' => 'claim', 'jti' => 'jti-123', 'challenge' => $state['challenge'], 'exp' => time() + 60]);
+        $secret = $enroll(['claim' => $claim])->assertOk()->assertJsonPath('data.paired', true)->json('data.secret');
+        $this->assertSame(64, strlen($secret));
+        $enroll(['claim' => $claim])->assertStatus(409);
+
+        $this->signed(['action' => 'health'], secret: $secret)->assertOk();
+        $this->signIn($admin)->get('/platform/server-manager')->assertOk()->assertSee('Connected');
+
+        $this->signIn($admin)->post('/platform/server-manager/reset')->assertSessionHas('status');
+        $this->signed(['action' => 'health'], secret: $secret)->assertStatus(401);
+        $this->assertNotSame($secret, app(Pairing::class)->secret());
     }
 
     public function test_ip_allowlist(): void

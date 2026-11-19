@@ -115,6 +115,14 @@ class PaymentMethodsTest extends TestCase
         $this->get('/i/v/'.$inv->ulid)->assertSee('You reported a payment of $1,000.00 by ACH / wire transfer', false);
     }
 
+    public function test_routing_numbers_missing_from_directory_use_known_fallback(): void
+    {
+        Http::fake(['bankrouting.io/*' => Http::response(['status' => 'error', 'error' => ['code' => 'BANK_NOT_FOUND']], 404)]);
+        $banks = app(\App\Services\Payments\BankDirectory::class);
+        $this->assertSame(['bank_name' => 'JPMorgan Chase Bank, N.A.', 'location' => 'NJ'], $banks->routing('021202337'));
+        $this->assertNull($banks->routing('021000021'));
+    }
+
     public function test_sent_invoice_can_add_newly_enabled_payment_methods(): void
     {
         [$owner, $biz, $client] = $this->setup3();

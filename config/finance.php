@@ -114,9 +114,11 @@ return [
         'prefetch_seconds' => (int) env('FINANCE_PREFETCH_SECONDS', 30),
     ],
 
-    // Server Manager helper endpoint (POST /srvmgr/helper). Token is the HMAC key shared with manage.mcnutt.cloud.
+    // Server Manager helper endpoint (POST /srvmgr/helper). Paired from Platform → Server Manager; the env token is an optional override.
     'srvmgr' => [
         'token' => env('SRVMGR_HELPER_TOKEN', ''),
+        'manager_url' => env('SRVMGR_MANAGER_URL', 'https://manage.mcnutt.cloud'),
+        'manager_pubkey' => env('SRVMGR_MANAGER_PUBKEY', ''),
         'allow_legacy_token' => (bool) env('SRVMGR_ALLOW_LEGACY_TOKEN', false),
         'allowed_ips' => env('SRVMGR_ALLOWED_IPS', ''),
         'tolerance_seconds' => 300,

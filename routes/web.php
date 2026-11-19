@@ -81,6 +81,10 @@ Route::middleware('central')->group(function () {
     Route::post('/platform/tax-tables/sync', [C\PlatformTaxTableController::class, 'sync'])->middleware('throttle:sensitive');
     Route::post('/platform/tax-tables/{id}/delete', [C\PlatformTaxTableController::class, 'destroy'])->whereNumber('id')->middleware('central:fresh');
     Route::post('/platform/role-mappings/{id}/delete', [C\PlatformController::class, 'deleteMapping'])->middleware('central:fresh');
+    Route::get('/platform/server-manager', [C\PlatformServerManagerController::class, 'index']);
+    Route::post('/platform/server-manager/settings', [C\PlatformServerManagerController::class, 'saveSettings'])->middleware('central:fresh');
+    Route::post('/platform/server-manager/unlock', [C\PlatformServerManagerController::class, 'unlock'])->middleware(['central:fresh', 'throttle:sensitive']);
+    Route::post('/platform/server-manager/reset', [C\PlatformServerManagerController::class, 'reset'])->middleware('central:fresh');
 
     Route::prefix('/b/{business}')->middleware('business')->group(function () {
         Route::get('/', [C\DashboardController::class, 'show'])->name('dashboard');

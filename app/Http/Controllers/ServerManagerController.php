@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\Audit;
+use App\Services\ServerManager\Pairing;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
@@ -14,13 +15,29 @@ use Symfony\Component\HttpFoundation\IpUtils;
 /** Server Manager helper contract (manage.mcnutt.cloud/integrate). HMAC-signed, machine-to-machine only. */
 class ServerManagerController extends Controller
 {
+    public function __construct(private readonly Pairing $pairing) {}
+
     public function handle(Request $request): JsonResponse
     {
+        if (! $this->ipAllowed($request)) {
+            return $this->fail('unauthorized', 401);
+        }
+        $params = json_decode($request->getContent() ?: '{}', true);
+
+        // Pairing runs before authentication: the manager doesn't hold the secret yet.
+        if (is_array($params) && ($params['action'] ?? '') === 'enroll') {
+            [$status, $data] = $this->pairing->enroll($params, $request->ip(), $request->getHost());
+            if ($status !== 200) {
+                return $this->fail($data, $status);
+            }
+            Audit::log(null, 'platform.srvmgr.paired', after: ['ip' => $request->ip()], actorType: 'srvmgr');
+
+            return $this->ok($data);
+        }
+
         if (! $this->authorized($request)) {
             return $this->fail('unauthorized', 401);
         }
-
-        $params = json_decode($request->getContent() ?: '{}', true);
         if (! is_array($params)) {
             return $this->fail('invalid json', 400);
         }
@@ -43,14 +60,20 @@ class ServerManagerController extends Controller
         }
     }
 
+    private function ipAllowed(Request $request): bool
+    {
+        $allowed = array_filter(array_map('trim', explode(',', (string) config('finance.srvmgr.allowed_ips'))));
+
+        return ! $allowed || IpUtils::checkIp((string) $request->ip(), $allowed);
+    }
+
     private function authorized(Request $request): bool
     {
-        $secret = (string) config('finance.srvmgr.token');
-        if (strlen($secret) < 32) {
+        if (! $this->pairing->active()) {
             return false;
         }
-        $allowed = array_filter(array_map('trim', explode(',', (string) config('finance.srvmgr.allowed_ips'))));
-        if ($allowed && ! IpUtils::checkIp((string) $request->ip(), $allowed)) {
+        $secret = $this->pairing->secret();
+        if (strlen($secret) < 32) {
             return false;
         }
 

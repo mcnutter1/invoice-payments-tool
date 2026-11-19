@@ -2,7 +2,7 @@
     $user = app(\App\Support\Context::class)->user;
     $home = ($last = $user?->last_business_id ? \App\Models\Business::find($user->last_business_id) : null) ? '/b/'.$last->ulid : '/businesses';
     $path = '/'.request()->path();
-    $links = ['/platform' => 'Platform operations'] + ($user?->isPlatformAdmin() ? ['/platform/backups' => 'Backups', '/platform/mileage-rates' => 'Mileage rates', '/platform/tax-tables' => 'Tax tables'] : []);
+    $links = ['/platform' => 'Platform operations'] + ($user?->isPlatformAdmin() ? ['/platform/backups' => 'Backups', '/platform/mileage-rates' => 'Mileage rates', '/platform/tax-tables' => 'Tax tables', '/platform/server-manager' => 'Server Manager'] : []);
 @endphp
 <!DOCTYPE html>
 <html lang="en">
