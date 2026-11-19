@@ -1,24 +1,20 @@
 @extends('layouts.app')
 @section('title', 'Products & Services')
 @section('content')
-<div class="flex items-center justify-between"><h1>Products &amp; Services</h1></div>
+<div class="flex flex-wrap items-center justify-between gap-3"><h1>Products &amp; Services</h1>
+    @if ($ctx->can('catalog.manage'))<button type="button" class="btn btn-primary" data-dialog-open="product-new">Add item</button>@endif
+</div>
 <p class="mt-1 text-sm text-slate-500">Catalog changes only affect future drafts. Issued invoices keep their original names, prices and tax.</p>
 <div class="mt-4 grid gap-4 lg:grid-cols-3">
     <div class="card overflow-x-auto lg:col-span-2">
         <table class="tbl">
-            <thead><tr><th>Item</th><th>Type</th><th class="num">Price</th><th>Income account</th><th>Tax</th><th>Status</th></tr></thead>
+            <thead><tr><th>Item</th><th>Type</th><th class="num">Price</th><th>Income account</th><th>Tax</th><th>Status</th>@if ($ctx->can('catalog.manage'))<th><span class="sr-only">Actions</span></th>@endif</tr></thead>
             <tbody>
             @forelse ($products as $p)
-                <tr>
+                <tr @class(['opacity-60' => ! $p->active])>
                     <td>
                         @if ($ctx->can('catalog.manage'))
-                        <details><summary class="cursor-pointer font-medium text-brand-700">{{ $p->name }}</summary>
-                            <form method="post" action="{{ $bu }}/catalog/{{ $p->id }}" class="mt-2 grid gap-2 sm:grid-cols-2">
-                                @csrf @include('catalog._product-fields', ['p' => $p])
-                                <label class="flex items-center gap-2 text-sm"><input type="hidden" name="active" value="0"><input class="check" type="checkbox" name="active" value="1" @checked($p->active)> Active</label>
-                                <div><button class="btn btn-sm btn-primary">Save</button></div>
-                            </form>
-                        </details>
+                            <button type="button" class="text-left font-medium text-brand-700 hover:underline" data-dialog-open="product-{{ $p->id }}">{{ $p->name }}</button>
                         @else <span class="font-medium">{{ $p->name }}</span> @endif
                         @if ($p->sku)<div class="text-xs text-slate-500">{{ $p->sku }}</div>@endif
                     </td>
@@ -27,19 +23,15 @@
                     <td>{{ $incomeAccounts->firstWhere('id', $p->income_account_id)?->label() }}</td>
                     <td>{{ $taxRates->firstWhere('id', $p->tax_rate_id)?->name ?? '—' }}</td>
                     <td>@include('partials.status', ['s' => $p->active ? 'active' : 'archived'])</td>
+                    @if ($ctx->can('catalog.manage'))<td class="text-right"><button type="button" class="btn btn-sm" data-dialog-open="product-{{ $p->id }}">Edit</button></td>@endif
                 </tr>
             @empty
-                <tr><td colspan="6"><div class="empty m-4">No items yet. Ad hoc lines are always allowed on invoices.</div></td></tr>
+                <tr><td colspan="7"><div class="empty m-4">No items yet. Ad hoc lines are always allowed on invoices.</div></td></tr>
             @endforelse
             </tbody>
         </table>
     </div>
     <div class="space-y-4">
-        @if ($ctx->can('catalog.manage'))
-        <div class="card"><div class="card-head"><h2>Add item</h2></div>
-            <form method="post" action="{{ $bu }}/catalog" class="card-body grid gap-2">@csrf @include('catalog._product-fields', ['p' => new \App\Models\Product(['kind' => 'service'])])<div><button class="btn btn-primary">Add</button></div></form>
-        </div>
-        @endif
         <div class="card"><div class="card-head"><h2>Tax rates</h2></div>
             <div class="card-body space-y-2 text-sm">
                 <p class="hint">Exclusive percentage taxes only. Rates are configured by you — automated jurisdiction lookup is not provided.</p>
@@ -62,4 +54,10 @@
         </div>
     </div>
 </div>
+@if ($ctx->can('catalog.manage'))
+    @include('catalog._product-dialog', ['p' => new \App\Models\Product(['kind' => 'service']), 'action' => $bu.'/catalog'])
+    @foreach ($products as $p)
+        @include('catalog._product-dialog', ['p' => $p, 'action' => $bu.'/catalog/'.$p->id])
+    @endforeach
+@endif
 @endsection

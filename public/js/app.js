@@ -659,6 +659,14 @@
     }
   }
 
+  // ---------- Modal dialogs: [data-dialog-open="id"], [data-dialog-close], backdrop click, reopen after validation errors ----------
+  {
+    $$('[data-dialog-open]').forEach((b) => b.addEventListener('click', () => document.getElementById(b.dataset.dialogOpen)?.showModal()));
+    $$('dialog [data-dialog-close]').forEach((b) => b.addEventListener('click', () => b.closest('dialog').close()));
+    $$('dialog.modal').forEach((d) => d.addEventListener('click', (e) => { if (e.target === d) d.close(); }));
+    $$('dialog[data-open]').forEach((d) => d.showModal());
+  }
+
   // ---------- Fee → net ----------
   $$('[data-fee-form]').forEach((f) => {
     const out = $('[data-net-out]', f);
