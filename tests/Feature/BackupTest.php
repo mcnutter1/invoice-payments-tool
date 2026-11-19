@@ -26,6 +26,8 @@ class BackupTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // Midday UTC so the hour steps below never cross the daily-full boundary.
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-11-19 12:00:00', 'UTC'));
         $this->store = new MemoryBackupStore;
         $this->app->instance(BackupStore::class, $this->store);
     }

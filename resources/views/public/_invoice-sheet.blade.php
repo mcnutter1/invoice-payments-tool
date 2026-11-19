@@ -65,7 +65,7 @@
             @endif
             <div class="mt-4 grid grid-cols-2 gap-2">
                 @if ($payable)<a class="btn btn-primary justify-center py-2.5 text-base" href="{{ $preview ? '#howtopay' : '/i/v/'.$invoice->ulid.'/pay' }}">Pay now</a>@endif
-                <a class="btn justify-center py-2.5 text-base {{ $payable ? '' : 'col-span-2' }}" href="{{ $preview ? $pdfUrl : '/i/v/'.$invoice->ulid.'/pdf' }}" @if($preview) target="_blank" rel="noopener" @endif>Download PDF</a>
+                @unless ($preview && empty($pdfUrl))<a class="btn justify-center py-2.5 text-base {{ $payable ? '' : 'col-span-2' }}" href="{{ $preview ? $pdfUrl : '/i/v/'.$invoice->ulid.'/pdf' }}" @if($preview) target="_blank" rel="noopener" @endif>Download PDF</a>@endunless
                 @if (! empty($instructions['check']) && $payable && ! $preview)<a class="btn btn-sm col-span-2 justify-center" href="/i/v/{{ $invoice->ulid }}/remittance">Remittance slip</a>@endif
             </div>
         </div>

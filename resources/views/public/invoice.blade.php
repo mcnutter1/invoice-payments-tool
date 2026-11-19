@@ -22,8 +22,8 @@
 
 @if ($preview)
 <div class="alert alert-info mb-4 flex flex-wrap items-center justify-between gap-2">
-    <span>Preview — this is what {{ $invoice->client?->display_name ?? 'the client' }} sees{{ $invoice->isDraft() ? '. Dates and the invoice number are filled in when you issue it.' : '.' }}</span>
-    <span class="flex gap-2"><a class="btn btn-sm" href="{{ $pdfUrl }}" target="_blank" rel="noopener">PDF</a><a class="btn btn-sm" href="{{ $backUrl }}">Back to invoice</a></span>
+    <span>@if (! empty($previewNote)){!! $previewNote !!}@else Preview — this is what {{ $invoice->client?->display_name ?? 'the client' }} sees{{ $invoice->isDraft() ? '. Dates and the invoice number are filled in when you issue it.' : '.' }}@endif</span>
+    <span class="flex gap-2">@if (! empty($pdfUrl))<a class="btn btn-sm" href="{{ $pdfUrl }}" target="_blank" rel="noopener">PDF</a>@endif @if (! empty($backUrl))<a class="btn btn-sm" href="{{ $backUrl }}">{{ $backLabel ?? 'Back to invoice' }}</a>@endif</span>
 </div>
 @endif
 

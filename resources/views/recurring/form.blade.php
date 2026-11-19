@@ -67,6 +67,9 @@
         <div class="sm:col-span-2"><label class="label" for="customer_note">Note on each invoice</label><textarea class="input" id="customer_note" name="customer_note" rows="2">{{ old('customer_note', $schedule?->customer_note) }}</textarea></div>
         @if ($schedule)<div class="sm:col-span-2"><label class="label" for="change_reason">Reason for change (audit)</label><input class="input" id="change_reason" name="change_reason"></div>@endif
     </div>
-    <div class="flex gap-2"><button class="btn btn-primary">Save schedule</button><a class="btn" href="{{ $bu }}/recurring">Cancel</a></div>
+    <div class="flex flex-wrap gap-2"><button class="btn btn-primary">Save schedule</button>
+        {{-- Named so the global submit handler doesn't disable it; the preview opens in a new tab. --}}
+        <button class="btn" name="preview" value="1" formaction="{{ $schedule ? $bu.'/recurring/'.$schedule->id.'/preview' : $bu.'/recurring/preview' }}" formtarget="_blank">Preview next invoice</button>
+        <a class="btn btn-ghost" href="{{ $bu }}/recurring">Cancel</a></div>
 </form>
 @endsection

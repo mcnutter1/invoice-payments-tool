@@ -235,8 +235,24 @@ class RecurringService
             $run->save(); // unique key blocks a concurrent duplicate
         }
         $s->loadMissing('lines');
+        $invoice = $this->invoices->saveDraft($business, null, $this->draftData($s, $period, $business));
+        if ($s->auto_issue && $automatic) {
+            $invoice = $this->invoices->issue($invoice);
+            if ($s->auto_send && ! $s->hasAutopay()) {
+                $this->email->queueInvoice($invoice, $invoice->recipients ?? []);
+            }
+        }
+        $run->update(['status' => 'generated', 'invoice_id' => $invoice->id, 'error' => null]);
+        Audit::log($business, 'schedule.generated', $s, null, ['period' => $key, 'invoice_id' => $invoice->id, 'auto_issue' => $s->auto_issue, 'auto_send' => $s->auto_send], null, $automatic ? 'system' : null);
+
+        return $invoice;
+    }
+
+    private function draftData(RecurringSchedule $s, Carbon $period, Business $business): array
+    {
         $next = $this->calc->nextAfter($s, $period);
-        $invoice = $this->invoices->saveDraft($business, null, [
+
+        return [
             'client_id' => $s->client_id,
             'issue_date' => $period->toDateString(),
             'due_date' => $period->copy()->addDays($s->terms_days)->toDateString(),
@@ -256,17 +272,26 @@ class RecurringService
                 return ['product_id' => $l->product_id, 'name' => $l->name, 'description' => $l->description, 'quantity' => (string) $l->quantity,
                     'unit_price' => $price, 'income_account_id' => $l->income_account_id, 'tax_rate_id' => $l->tax_rate_id];
             })->all(),
-        ]);
-        if ($s->auto_issue && $automatic) {
-            $invoice = $this->invoices->issue($invoice);
-            if ($s->auto_send && ! $s->hasAutopay()) {
-                $this->email->queueInvoice($invoice, $invoice->recipients ?? []);
-            }
-        }
-        $run->update(['status' => 'generated', 'invoice_id' => $invoice->id, 'error' => null]);
-        Audit::log($business, 'schedule.generated', $s, null, ['period' => $key, 'invoice_id' => $invoice->id, 'auto_issue' => $s->auto_issue, 'auto_send' => $s->auto_send], null, $automatic ? 'system' : null);
+        ];
+    }
 
-        return $invoice;
+    /**
+     * Build the next invoice from unsaved form data and hand it to $render; everything is rolled back afterwards.
+     * $render receives (Invoice $draft, RecurringSchedule $schedule, list<Carbon> $upcoming).
+     */
+    public function preview(Business $business, ?RecurringSchedule $schedule, array $data, \Closure $render): mixed
+    {
+        DB::beginTransaction();
+        try {
+            $s = $this->save($business, $schedule, $data);
+            $upcoming = $this->calc->upcoming($s, 4);
+            $period = $upcoming[0] ?? Carbon::parse($s->start_date->toDateString());
+            $invoice = $this->invoices->saveDraft($business, null, $this->draftData($s, $period, $business));
+
+            return $render($invoice, $s, $upcoming);
+        } finally {
+            DB::rollBack();
+        }
     }
 
     /** Staff-reviewed generation of a missed period: always creates a draft for review. */

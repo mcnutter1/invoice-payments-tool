@@ -125,6 +125,32 @@ class RecurringController extends Controller
         return $this->to('/recurring/'.$id, 'Schedule updated. Changes apply to future periods only.');
     }
 
+    /** The next invoice this (unsaved) form would generate, as the client will see it. Nothing is stored. */
+    public function preview(Request $request, \App\Services\Invoicing\InvoicePresenter $presenter, ?int $id = null)
+    {
+        $schedule = $id ? $this->schedule($id) : null;
+        $data = $this->validated($request);
+        $data['require_signed_contract'] = $request->boolean('require_signed_contract', true);
+
+        $html = $this->service->preview($this->biz(), $schedule, $data, function ($invoice, $s, array $upcoming) use ($presenter) {
+            $invoice->load(['client.contacts', 'contractVersion.contract']);
+            $invoice->balance_cents = $invoice->total_cents;
+            $fmt = fn ($d) => $d->format('M j, Y');
+            $note = 'Preview of the next invoice for <strong>'.e($s->name).'</strong>'
+                .($invoice->issue_date ? ' — dated '.$fmt($invoice->issue_date).', due '.$fmt($invoice->due_date) : '')
+                .(count($upcoming) > 1 ? '. Following invoices: '.e(collect(array_slice($upcoming, 1))->map($fmt)->implode(', ')) : '')
+                .'. '.($s->auto_issue ? 'Issued and numbered automatically.' : 'Created as a draft for review.').' Nothing has been saved.';
+
+            return view('public.invoice', $presenter->viewModel($invoice) + [
+                'preview' => true, 'previewNote' => $note, 'pdfUrl' => null, 'backUrl' => null,
+                'claims' => collect(), 'openClaim' => null, 'agreement' => null, 'canReport' => false, 'reviewing' => false,
+                'agreementTitle' => $invoice->contractVersion?->title ?? $invoice->contract?->title,
+            ])->render();
+        });
+
+        return response($html)->header('Cache-Control', 'no-store');
+    }
+
     public function removeAutopay(int $id)
     {
         $s = $this->schedule($id);

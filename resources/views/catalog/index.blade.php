@@ -8,7 +8,7 @@
 <div class="mt-4 grid gap-4 lg:grid-cols-3">
     <div class="card overflow-x-auto lg:col-span-2">
         <table class="tbl">
-            <thead><tr><th>Item</th><th>Type</th><th class="num">Price</th><th>Income account</th><th>Tax</th><th>Status</th>@if ($ctx->can('catalog.manage'))<th><span class="sr-only">Actions</span></th>@endif</tr></thead>
+            <thead><tr><th>Item</th><th>Type</th><th class="num">Price</th><th>Income account</th><th>Tax</th><th>Status</th></tr></thead>
             <tbody>
             @forelse ($products as $p)
                 <tr @class(['opacity-60' => ! $p->active])>
@@ -23,10 +23,9 @@
                     <td>{{ $incomeAccounts->firstWhere('id', $p->income_account_id)?->label() }}</td>
                     <td>{{ $taxRates->firstWhere('id', $p->tax_rate_id)?->name ?? '—' }}</td>
                     <td>@include('partials.status', ['s' => $p->active ? 'active' : 'archived'])</td>
-                    @if ($ctx->can('catalog.manage'))<td class="text-right"><button type="button" class="btn btn-sm" data-dialog-open="product-{{ $p->id }}">Edit</button></td>@endif
                 </tr>
             @empty
-                <tr><td colspan="7"><div class="empty m-4">No items yet. Ad hoc lines are always allowed on invoices.</div></td></tr>
+                <tr><td colspan="6"><div class="empty m-4">No items yet. Ad hoc lines are always allowed on invoices.</div></td></tr>
             @endforelse
             </tbody>
         </table>

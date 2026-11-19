@@ -79,6 +79,26 @@ class RecurringTest extends TestCase
         $this->assertSame(['ann@alpha.test', 'al@alpha.test', 'boss@alpha.test'], RecurringSchedule::latest('id')->first()->recipients);
     }
 
+    public function test_preview_renders_next_invoice_from_unsaved_form_without_saving(): void
+    {
+        Carbon::setTestNow('2026-11-19 12:00:00');
+        [$owner, $biz, $s] = $this->schedule(['start_date' => '2026-12-01']);
+        $counts = fn () => [Invoice::count(), RecurringSchedule::count(), \App\Models\RecurringLineItem::count(), \App\Models\AuditEvent::count()];
+        $before = $counts();
+        $form = ['name' => 'Retainer v2', 'client_id' => $s->client_id, 'cadence' => 'month', 'interval' => 1, 'start_date' => '2026-12-01', 'terms_days' => 15,
+            'customer_note' => 'Thanks for your business', 'lines' => [['name' => 'Strategy hours', 'quantity' => '3', 'unit_price' => '250']]];
+
+        $this->signIn($owner)->post("/b/{$biz->ulid}/recurring/{$s->id}/preview", $form)->assertOk()
+            ->assertSee('Preview of the next invoice for')->assertSee('Retainer v2')->assertSee('Strategy hours')->assertSee('$750.00')
+            ->assertSee('Dec 1, 2026')->assertSee('Dec 16, 2026')->assertSee('Jan 1, 2027')->assertSee('Thanks for your business')->assertSee('Nothing has been saved');
+        $this->signIn($owner)->post("/b/{$biz->ulid}/recurring/preview", $form)->assertOk()->assertSee('Strategy hours');
+
+        $this->assertSame($before, $counts());
+        $this->assertSame('Retainer', $s->fresh()->name);
+        $this->assertSame('Monthly retainer', $s->fresh()->lines->first()->name);
+        $this->signIn($owner)->get("/b/{$biz->ulid}/recurring/{$s->id}/edit")->assertOk()->assertSee('Preview next invoice');
+    }
+
     public function test_month_end_clamp_restores_anchor_and_handles_leap_year(): void
     {
         $s = new RecurringSchedule(['cadence' => 'month', 'interval' => 1, 'start_date' => Carbon::parse('2028-01-31')]);

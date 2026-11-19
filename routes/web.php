@@ -318,6 +318,8 @@ Route::middleware('central')->group(function () {
             Route::post('/recurring', [C\RecurringController::class, 'store']);
             Route::get('/recurring/{id}/edit', [C\RecurringController::class, 'edit']);
             Route::post('/recurring/{id}', [C\RecurringController::class, 'update'])->whereNumber('id');
+            Route::post('/recurring/preview', [C\RecurringController::class, 'preview']);
+            Route::post('/recurring/{id}/preview', [C\RecurringController::class, 'preview'])->whereNumber('id');
             Route::post('/recurring/{id}/status', [C\RecurringController::class, 'status']);
             Route::post('/recurring/{id}/autopay/remove', [C\RecurringController::class, 'removeAutopay']);
             Route::post('/schedule-runs/{id}/generate', [C\RecurringController::class, 'generateRun']);
