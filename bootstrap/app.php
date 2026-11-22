@@ -20,6 +20,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'business' => \App\Http\Middleware\ResolveBusiness::class,
             'perm' => \App\Http\Middleware\RequirePermission::class,
             'public.doc' => \App\Http\Middleware\PublicDocumentHeaders::class,
+            'api.key' => \App\Http\Middleware\AuthenticateApiKey::class,
         ]);
         $middleware->encryptCookies();
         // Signed/bearer-authenticated machine endpoints.

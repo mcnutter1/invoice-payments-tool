@@ -6,6 +6,26 @@ use Illuminate\Support\Facades\Route;
 Route::get('/health', [C\HealthController::class, 'show']);
 Route::post('/srvmgr/helper', [C\ServerManagerController::class, 'handle'])->middleware('throttle:60,1');
 
+// ---------- Read-only Data API (API key per business; see docs/INTEGRATIONS.md) ----------
+Route::prefix('/api/v1/data')->middleware(['throttle:120,1'])->group(function () {
+    $d = C\Api\DataApiController::class;
+    Route::get('/', [$d, 'index'])->middleware('api.key');
+    Route::get('/deletions', [$d, 'deletions'])->middleware('api.key');
+    Route::get('/accounts', [$d, 'accounts'])->middleware('api.key:ledger.read');
+    Route::get('/journal-entries', [$d, 'journalEntries'])->middleware('api.key:ledger.read');
+    Route::get('/cash-events', [$d, 'cashEvents'])->middleware('api.key:ledger.read');
+    Route::get('/clients', [$d, 'clients'])->middleware('api.key:invoices.read');
+    Route::get('/invoices', [$d, 'invoices'])->middleware('api.key:invoices.read');
+    Route::get('/credit-notes', [$d, 'creditNotes'])->middleware('api.key:invoices.read');
+    Route::get('/payments', [$d, 'payments'])->middleware('api.key:payments.read');
+    Route::get('/vendors', [$d, 'vendors'])->middleware('api.key:expenses.read');
+    Route::get('/expenses', [$d, 'expenses'])->middleware('api.key:expenses.read');
+    Route::get('/reports/profit-and-loss', [$d, 'profitAndLoss'])->middleware('api.key:reports.read');
+    Route::get('/reports/balance-sheet', [$d, 'balanceSheet'])->middleware('api.key:reports.read');
+    Route::get('/reports/trial-balance', [$d, 'trialBalance'])->middleware('api.key:reports.read');
+    Route::get('/reports/tax-estimate', [$d, 'taxEstimate'])->middleware('api.key:reports.read');
+});
+
 // ---------- Authentication (McNutt Cloud) ----------
 Route::middleware('throttle:auth')->group(function () {
     Route::get('/auth/login', [C\AuthController::class, 'login'])->name('login');
@@ -338,6 +358,8 @@ Route::middleware('central')->group(function () {
             Route::post('/settings/payments', [C\SettingsController::class, 'updatePayments'])->middleware('central:fresh');
             Route::post('/settings/stripe', [C\SettingsController::class, 'updateStripe'])->middleware(['central:fresh', 'throttle:sensitive']);
             Route::post('/settings/venmo-token', [C\SettingsController::class, 'venmoToken'])->middleware(['central:fresh', 'throttle:sensitive']);
+            Route::post('/settings/api-keys', [C\SettingsController::class, 'createApiKey'])->middleware(['central:fresh', 'throttle:sensitive']);
+            Route::post('/settings/api-keys/{id}/revoke', [C\SettingsController::class, 'revokeApiKey'])->whereNumber('id')->middleware('central:fresh');
             Route::get('/settings/bank-lookup', [C\SettingsController::class, 'bankLookup'])->middleware('throttle:30,1');
             Route::post('/settings/email', [C\SettingsController::class, 'updateEmail']);
             Route::post('/settings/email/test', [C\SettingsController::class, 'testEmail'])->middleware('throttle:sensitive');

@@ -53,3 +53,90 @@ paths:
                   total: { type: string, example: '$1,234.56' }
         '422':
           description: Validation or business-rule error (`{"error": "..."}`), e.g. stale lock_version
+  /api/v1/data:
+    get:
+      summary: Data API discovery — business profile, key scopes and available datasets
+      security: [{ apiKey: [] }, { bearer: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/Page' }
+        '401': { $ref: '#/components/responses/Error' }
+  /api/v1/data/{dataset}:
+    get:
+      summary: Read-only dataset for the API key's business
+      description: |
+        Datasets and required scope: `accounts`, `journal-entries`, `cash-events` (ledger.read); `clients`, `invoices`,
+        `credit-notes` (invoices.read); `payments` (payments.read); `vendors`, `expenses` (expenses.read);
+        `deletions` (any key). Mutable datasets order by (updated_at, id) and accept `updated_since`; `journal-entries`,
+        `cash-events` and `deletions` are append-only and order by id. Money is a decimal string.
+      security: [{ apiKey: [] }, { bearer: [] }]
+      parameters:
+        - { name: dataset, in: path, required: true, schema: { type: string, enum: [accounts, journal-entries, cash-events, clients, invoices, credit-notes, payments, vendors, expenses, deletions] } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
+        - { name: cursor, in: query, schema: { type: string }, description: Opaque `meta.next_cursor` from the previous page }
+        - { name: updated_since, in: query, schema: { type: string, format: date-time }, description: Mutable datasets only }
+        - { name: from, in: query, schema: { type: string, format: date }, description: journal-entries / cash-events }
+        - { name: to, in: query, schema: { type: string, format: date }, description: journal-entries / cash-events }
+        - { name: since, in: query, schema: { type: string, format: date-time }, description: deletions }
+        - { name: include_drafts, in: query, schema: { type: boolean }, description: invoices (default excludes drafts) }
+      responses:
+        '200': { $ref: '#/components/responses/Page' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { description: Rate limited (120 requests/minute) }
+  /api/v1/data/reports/{report}:
+    get:
+      summary: Financial reports (reports.read)
+      description: |
+        `profit-and-loss` (from, to, basis=cash|accrual, monthly), `balance-sheet` (as_of), `trial-balance` (as_of),
+        `tax-estimate` (year; an estimate, flagged with `meta.estimate: true`).
+      security: [{ apiKey: [] }, { bearer: [] }]
+      parameters:
+        - { name: report, in: path, required: true, schema: { type: string, enum: [profit-and-loss, balance-sheet, trial-balance, tax-estimate] } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: basis, in: query, schema: { type: string, enum: [cash, accrual] } }
+        - { name: monthly, in: query, schema: { type: boolean } }
+        - { name: as_of, in: query, schema: { type: string, format: date } }
+        - { name: year, in: query, schema: { type: integer } }
+      responses:
+        '200': { $ref: '#/components/responses/Page' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+components:
+  securitySchemes:
+    apiKey: { type: apiKey, in: header, name: X-API-Key, description: 'Business API key (`fin_…`) from Settings → Data API access' }
+    bearer: { type: http, scheme: bearer }
+  responses:
+    Page:
+      description: '`{"data": …, "meta": {"business_id", "api_version", "generated_at", "has_more", "next_cursor", "count"}}`'
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: {}
+              meta:
+                type: object
+                properties:
+                  business_id: { type: string }
+                  api_version: { type: string, example: '1.0' }
+                  generated_at: { type: string, format: date-time }
+                  has_more: { type: boolean }
+                  next_cursor: { type: string, nullable: true }
+                  count: { type: integer }
+    Error:
+      description: '`{"error": {"code", "message", "correlation_id"}}`'
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                properties:
+                  code: { type: string, enum: [unauthorized, forbidden, validation_failed, invalid_cursor] }
+                  message: { type: string }
+                  correlation_id: { type: string }

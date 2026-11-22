@@ -32,6 +32,7 @@ class SettingsController extends Controller
             'fromHeader' => EmailComposer::fromHeader($b),
             'pendingSends' => EmailOutbox::where('business_id', $b->id)->where('status', 'queued')->count(),
             'canManage' => $this->ctx()->can('business.manage'),
+            'apiKeys' => \App\Models\ApiKey::with('creator')->where('business_id', $b->id)->orderByRaw('revoked_at is not null')->latest('id')->get(),
             'zelleQr' => $b->zelle_qr_document_id
                 ? app(DocumentStore::class)->dataUri(\App\Models\PrivateDocument::where('business_id', $b->id)->find($b->zelle_qr_document_id))
                 : null,
@@ -262,6 +263,32 @@ class SettingsController extends Controller
         Audit::log($b, 'business.stripe_updated', $b, null, ['key_changed' => $key !== '', 'webhook_secret_changed' => ! empty($data['stripe_webhook_secret']), 'live' => $b->stripe_live, 'deposit_account_id' => $b->stripe_deposit_account_id]);
 
         return back()->with('status', 'Stripe connected'.($b->stripe_account_label ? ' ('.$b->stripe_account_label.')' : '').'. Turn on “Credit / debit card” under accepted methods to offer it.');
+    }
+
+    public function createApiKey(Request $request)
+    {
+        $b = $this->biz();
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:100'],
+            'scopes' => ['required', 'array', 'min:1'],
+            'scopes.*' => [Rule::in(array_keys(\App\Models\ApiKey::SCOPES))],
+            'expires_at' => ['nullable', 'date', 'after:today'],
+        ], ['scopes.required' => 'Choose at least one kind of data.']);
+        $expires = ! empty($data['expires_at']) ? \Illuminate\Support\Carbon::parse($data['expires_at'], $b->timezone)->endOfDay() : null;
+        [$key, $token] = \App\Models\ApiKey::issue($b, $data['name'], $data['scopes'], $expires, $this->ctx()->user?->id);
+        Audit::log($b, 'business.api_key_created', $key, null, ['name' => $key->name, 'prefix' => $key->prefix, 'scopes' => $key->scopes, 'expires_at' => $key->expires_at?->toIso8601String()]);
+
+        return redirect('/b/'.$b->ulid.'/settings#api-access')->with('api_key_token', $token)->with('status', 'API key created. Copy it now — it is shown only once.');
+    }
+
+    public function revokeApiKey(int $id)
+    {
+        $b = $this->biz();
+        $key = \App\Models\ApiKey::where('business_id', $b->id)->whereNull('revoked_at')->findOrFail($id);
+        $key->update(['revoked_at' => now(), 'revoked_by' => $this->ctx()->user?->id]);
+        Audit::log($b, 'business.api_key_revoked', $key, null, ['name' => $key->name, 'prefix' => $key->prefix]);
+
+        return redirect('/b/'.$b->ulid.'/settings#api-access')->with('status', 'API key “'.$key->name.'” revoked.');
     }
 
     public function venmoToken(Request $request)

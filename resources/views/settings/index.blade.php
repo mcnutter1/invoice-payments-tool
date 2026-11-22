@@ -310,4 +310,50 @@ Content-Type: application/json
         @endif
     </div>
 </div>
+
+<div id="api-access" class="card mt-4 scroll-mt-4">
+    <div class="card-head"><div><h2>Data API access</h2><p class="text-xs text-slate-500">Read-only keys for systems such as McNutt Legacy to pull this business’s books.</p></div>
+        <span class="chip {{ $apiKeys->contains(fn ($k) => $k->isActive()) ? 'chip-green' : 'chip-gray' }}">{{ $apiKeys->filter(fn ($k) => $k->isActive())->count() }} active</span></div>
+    <div class="card-body space-y-4 text-sm">
+        @if (session('api_key_token'))
+            <div class="alert alert-info"><strong>Copy this key now — it won’t be shown again.</strong>
+                <div class="mt-2 flex items-center gap-2"><code class="break-all">{{ session('api_key_token') }}</code><button type="button" class="btn btn-sm" data-copy="{{ session('api_key_token') }}">Copy</button></div>
+                <p class="hint mt-2">Base URL: <code>{{ url('/api/v1/data') }}</code> · send it as <code>X-API-Key</code> (or <code>Authorization: Bearer</code>).</p></div>
+        @endif
+        @if ($apiKeys->isNotEmpty())
+        <div class="overflow-x-auto"><table class="tbl">
+            <thead><tr><th>Name</th><th>Key</th><th>Access</th><th>Last used</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+            @foreach ($apiKeys as $k)
+                <tr @class(['opacity-60' => ! $k->isActive()])>
+                    <td class="font-medium">{{ $k->name }}<div class="text-xs text-slate-500">by {{ $k->creator?->label() ?? '—' }} · {{ $k->created_at->timezone($b->timezone)->format('M j, Y') }}</div></td>
+                    <td><code class="text-xs">{{ $k->prefix }}…</code></td>
+                    <td class="text-xs">{{ collect($k->scopes)->map(fn ($s) => \App\Models\ApiKey::SCOPES[$s][0] ?? $s)->implode(', ') }}</td>
+                    <td class="text-xs">{{ $k->last_used_at ? $k->last_used_at->diffForHumans().' · '.$k->last_used_ip : 'Never' }}</td>
+                    <td>@if ($k->revoked_at)<span class="chip chip-gray">Revoked</span>@elseif (! $k->isActive())<span class="chip chip-amber">Expired</span>@else<span class="chip chip-green">Active</span>@if($k->expires_at)<div class="text-xs text-slate-500">until {{ $k->expires_at->timezone($b->timezone)->format('M j, Y') }}</div>@endif @endif</td>
+                    <td class="text-right">@if ($canManage && ! $k->revoked_at)<form method="post" action="{{ $bu }}/settings/api-keys/{{ $k->id }}/revoke" data-confirm="Revoke “{{ $k->name }}”? Anything using it stops working immediately.">@csrf<button class="btn btn-sm btn-danger">Revoke</button></form>@endif</td>
+                </tr>
+            @endforeach
+            </tbody>
+        </table></div>
+        @endif
+        @if ($canManage)
+        <form method="post" action="{{ $bu }}/settings/api-keys" class="grid gap-4 rounded-lg border border-slate-200 p-4 sm:grid-cols-2">@csrf
+            <div><label class="label" for="api_name">Key name</label><input class="input" id="api_name" name="name" required maxlength="100" value="{{ old('name', 'McNutt Legacy') }}"></div>
+            <div><label class="label" for="api_expires">Expires <span class="font-normal text-slate-500">(optional)</span></label><input class="input" id="api_expires" name="expires_at" type="date" min="{{ $b->localToday()->addDay()->toDateString() }}" value="{{ old('expires_at') }}"></div>
+            <fieldset class="sm:col-span-2"><legend class="label">Data this key can read</legend>
+                <div class="grid gap-2 sm:grid-cols-2">
+                @foreach (\App\Models\ApiKey::SCOPES as $scope => [$label, $desc])
+                    <label class="flex items-start gap-2"><input class="check mt-0.5" type="checkbox" name="scopes[]" value="{{ $scope }}" @checked(in_array($scope, old('scopes', array_keys(\App\Models\ApiKey::SCOPES)), true))>
+                        <span><span class="font-medium">{{ $label }}</span><span class="block text-xs text-slate-500">{{ $desc }}</span></span></label>
+                @endforeach
+                </div>
+                @error('scopes')<p class="field-error">{{ $message }}</p>@enderror
+            </fieldset>
+            <div class="sm:col-span-2"><button class="btn btn-primary">Create API key</button>
+                <p class="hint mt-1">Keys are read-only and limited to this business. Only a fingerprint is stored; revoke a key any time.</p></div>
+        </form>
+        @endif
+    </div>
+</div>
 @endsection

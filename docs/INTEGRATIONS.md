@@ -7,8 +7,37 @@
 | Stripe (card payments, autopay) | `Services/Payments/StripeGateway` + `StripePayments` | Settings → Stripe (live/test chip, account label) |
 | Venmo receipt feed | `Services/Payments/VenmoFeed`, `POST /api/v1/venmo/payments` | Settings → Venmo feed (token active/none) |
 | Bank directory (routing → bank name) | `Services/Payments/BankDirectory` | lookups cached 30 days; failures fall back to manual entry |
+| Data API (McNutt Legacy and other read-only consumers) | `Http/Controllers/Api/DataApiController`, `GET /api/v1/data/…` | Settings → Data API access (keys, scopes, last used) |
 
 Development drivers (`AUTH_DRIVER=dev`, `NOTIFICATIONS_DRIVER=log`) are refused when `APP_ENV=production`.
+
+## Data API (v1, read-only)
+
+Machine-readable export of one business's books for downstream systems such as McNutt Legacy
+(`legacy.mcnutt.cloud`). Contract in `docs/openapi.yaml`.
+
+* **Credential:** a per-business key `fin_…` created in Settings → Data API access (`business.manage`, fresh sign-in).
+  Only its SHA-256 and a 12-character prefix are stored; it is shown once. Optional expiry; revocation is immediate.
+  Send as `X-API-Key: fin_…` (matches Legacy's `api_key` connections) or `Authorization: Bearer fin_…`.
+  One key = one business; connect several businesses with one key each. No database user is ever shared.
+* **Scopes:** `ledger.read` (accounts, journal-entries, cash-events), `invoices.read` (clients, invoices,
+  credit-notes), `payments.read` (payments + allocations + fees), `expenses.read` (vendors, expenses + lines),
+  `reports.read` (profit-and-loss, balance-sheet, trial-balance, tax-estimate). `GET /api/v1/data` (discovery) and
+  `/deletions` need any valid key. GET only; nothing can be changed through the API.
+* **Envelope:** `{"data": …, "meta": {"business_id", "api_version", "generated_at", "has_more", "next_cursor", "count"}}`.
+  Errors: `{"error": {"code", "message", "correlation_id"}}` with 401/403/422/400/429.
+* **Values:** money as decimal strings (`"1234.50"`, negative with a leading `-`), dates `YYYY-MM-DD`, timestamps
+  ISO-8601 UTC. IDs are stable strings; invoices and payments also carry their `ulid`.
+* **Incremental sync:** mutable datasets order by `(updated_at, id)`; pass `updated_since` = start of your previous
+  sync minus a few minutes and upsert by `id` (timestamps have one-second resolution). Follow `next_cursor` until
+  `has_more` is false (`limit` ≤ 500). `journal-entries` and `cash-events` are append-only (corrections are new
+  reversing entries linked by `reversal_of_id`) — page by cursor and optionally `from`/`to` on the entry date.
+  Voids keep the record with `status: void`; permanently deleted (purged) records appear in `/deletions?since=`.
+* **Cash vs accrual:** `journal-entries` is the accrual ledger; `cash-events` is the cash-basis recognition of income
+  and expense per account; `reports/profit-and-loss?basis=cash|accrual` returns either view.
+* **Not exposed:** internal notes, bank/card secrets, tax IDs, client contact lists, documents and PDFs.
+* **Limits & audit:** 120 requests/minute per IP; `last_used_at`/IP shown per key; key creation and revocation are
+  in the audit log.
 
 ## Payment processors
 
